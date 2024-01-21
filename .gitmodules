@@ -1,0 +1,3 @@
+[submodule "deps/rplidar"]
+	path = deps/rplidar
+	url = git@github.com:wcyates/rplidar.git
