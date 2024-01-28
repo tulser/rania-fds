@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "02d0ecd0b5074b3a15de3e1245ba25f1e1c8cbc2356b17a55e64af31b568cfe1"
+            "sha256": "24162390febf2666e549b517eef23211fd7e7e5aa84168256576e4ff8864b86b"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -75,8 +75,12 @@
             ],
             "version": "==3.5"
         },
-        "rplidar": {
-            "file": "deps/rplidar"
+        "rplidar-roboticia": {
+            "hashes": [
+                "sha256:709e9143f7701d69e8439231b065e676f7d5a6086cd2922113b055bedf99f0e3"
+            ],
+            "index": "pypi",
+            "version": "==0.9.5"
         },
         "scikit-learn": {
             "hashes": [
