@@ -1,9 +1,13 @@
 from typing import List, Optional
+
+import logging
+
 import serial.tools.list_ports as list_ports
 import numpy as np
-
-from .room import FDSRoom
 from rplidar import RPLidar
+
+from .fdscommon import FDSDomainConfig, FDSException, FDSThreadPool
+from .room import FDSRoom
 
 
 class FDSDomain(object):
@@ -12,10 +16,25 @@ class FDSDomain(object):
     dwelling. A fall detection system (FDS) is an instance of the class.
     """
 
-    def __init__(self):
+    def __init__(self, dom_config: FDSDomainConfig, logger: logging.Logger):
+        self._dom_config = dom_config
+        self._logger = logger
+        self._rooms = []
+        self._thread_pool = FDSThreadPool()
         self._initalizeRooms()
-        self.runFDS()
+        self._runRoomThreads()
 
+    def _initalizeRooms(self):
+        # TODO: deconstruct domconfig to room tuples
+        room_configs = self._dom_config
+        for room_config in room_configs:
+            self._rooms.append(FDSRoom(room_config, self._thread_pool,
+                                       self._logger))
+
+    def _runRoomThreads(self):
+        self._thread_pool.runThreads()
+
+    # FIXME: account for changed rplidar dependency (use .sensor module)
     def getValidLidarPorts(ports: Optional[List[str]] = None) -> List[str]:
         """
         Detect and return a list of ports associated with [RP]Lidar devices.
@@ -35,20 +54,4 @@ class FDSDomain(object):
         return lidar_ports
 
     def _initializeLidars(self, ids: List[str]):
-        pass
-
-    def _retrieveRoomInfo() -> np.ndarray:
-        """
-        Get room data from the database or configuration
-        """
-        pass
-
-    def _initializeRooms(self):
-        roominfo = self._retrieveRoomInfo()
-        pass
-
-    def runFDS(self):
-        # run room threads
-        #for room in self._rooms:
-        #   run
         pass

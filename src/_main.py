@@ -1,8 +1,8 @@
-from .domain import FDSDomain
+import fds.main
 
 
 def main():
-    domain = FDSDomain()
+    fds.main()
     return
 '''
     lidar_port = getLidarPort()
