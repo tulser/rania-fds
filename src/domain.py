@@ -22,7 +22,6 @@ class FDSDomain(object):
         self._rooms = []
         self._thread_pool = FDSThreadPool()
         self._initalizeRooms()
-        self._runRoomThreads()
 
     def _initalizeRooms(self):
         # TODO: deconstruct domconfig to room tuples
@@ -30,6 +29,9 @@ class FDSDomain(object):
         for room_config in room_configs:
             self._rooms.append(FDSRoom(room_config, self._thread_pool,
                                        self._logger))
+
+    def start(self):
+        return self._runRoomThreads()
 
     def _runRoomThreads(self):
         self._thread_pool.runThreads()

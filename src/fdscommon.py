@@ -25,6 +25,10 @@ class FDSGlobalConfig:
 
 
 class FDSRoomThreadPool(object):
+    """
+    Class mastered by FDSDomains and used by FDSRooms to add and start room
+    threads. Allows room threads of a domain to be monitored.
+    """
 
     def __init__(self):
         self._threads = []

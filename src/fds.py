@@ -37,7 +37,9 @@ DEFAULT_CONFIG_PATH_POSIX = "/etc/rania-fds/fds.conf"
 # FDS instance global variables
 logger: logging.Logger = None
 
-fds_config: FDSGlobalConfig()
+fds_config: FDSGlobalConfig() = None
+fsocket: socket.socket = None
+fsocket_conns = None
 
 
 def main(config_path: Optional[str] = None,
@@ -55,13 +57,14 @@ def main(config_path: Optional[str] = None,
     else:
         fds_config = _getFDSConfig(config_path)
 
-    _initFDSSocket(fds_config.sock_path)
+    _initSocket(fds_config.sock_path)
 
-    domain = FDSDomain(fds_config.dom_config)
+    domain = FDSDomain(fds_config.dom_config, socket)
+    domain.start()
     return
 
 
-def _initFDSSocket(sock_path: str):
+def _initSocket(sock_path: str):
     global logger
     global fsocket
 
@@ -72,7 +75,17 @@ def _initFDSSocket(sock_path: str):
 
     fsocket = socket.socket(family=socket.AF_UNIX, type=socket.SOCK_STREAM)
     fsocket.bind(sock_path)
+    # TODO: Create a thread to listen for socket connections
     return
+
+
+def _socketHandler():
+    pass
+
+
+def _deinitSocket():
+    global logger
+    global fsocket
 
 
 def _getFDSConfig(config_path: str) -> FDSGlobalConfig:
