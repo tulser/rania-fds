@@ -4,10 +4,10 @@ import logging
 
 import serial.tools.list_ports as list_ports
 import numpy as np
-from rplidar import RPLidar
 
-from .fdscommon import FDSDomainConfig, FDSException, FDSThreadPool
-from .room import FDSRoom
+from sensor import RPLidarEx
+from fdscommon import FDSDomainConfig, FDSException, FDSThreadPool
+from room import FDSRoom
 
 
 class FDSDomain(object):
@@ -46,11 +46,11 @@ class FDSDomain(object):
         if ports is None:
             lidar_ports: List[str] = []
             for port in list_ports.comports():
-                if RPLidar(port.device).is_valid_device():
+                if RPLidarEx.is_valid_device(port.device):
                     lidar_ports.append(port.device)
         else:
             for port in ports:
-                if RPLidar(port).is_valid_device():
+                if RPLidarEx.is_valid_device(port):
                     list_ports.append(port)
 
         return lidar_ports

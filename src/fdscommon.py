@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 import threading
 
+from sensor import SensorInfo
+
 
 class FDSException(Exception):
     pass
@@ -10,7 +12,7 @@ class FDSException(Exception):
 
 @dataclass
 class FDSRoomConfig:
-    pass
+    assigned_sensors: List[SensorInfo]
 
 
 @dataclass

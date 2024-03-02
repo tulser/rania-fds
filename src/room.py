@@ -6,22 +6,23 @@ import threading
 from collections import deque
 
 import numpy as np
-from rplidar import RPLidar
 
-from .fdscommon import (FDSRoomConfig, FDSThreadPool, FDSThreadType,
-                        FDSException)
+import sensor
+from fdscommon import (FDSRoomConfig, FDSThreadPool, FDSThreadType,
+                       FDSException)
 
 
 class FDSRoom(object):
-    '''
+    """
     Class representing a room/spacial unit of an FDSDomain
-    '''
+    """
 
     class ActivityState(Enum):
         NONE = 0
         LOW = 1
         HIGH = 2
 
+    _SENSOR_THREAD_TIMEOUT = 2.0
     _SCAN_MIN_WINDOW_SIZE = 5
 
     def __init__(self, room_config: FDSRoomConfig, thread_pool: FDSThreadPool,
@@ -30,11 +31,9 @@ class FDSRoom(object):
         self._thread_pool = thread_pool
         self._logger = logger
         self._scans = np.ndarray(self._WINDOW_SIZE)
-        # Sema4 value ensures roomThread does not immediately begin processing
-        # before the full scan window completes at the first loop.
-        self._sensor_mutex = threading.Semaphore(value=0)
-
-        self._threadpool.addThread(target=self._roomThread)
+        self._sensors = sensor.getSensors(room_config, logger)
+        # control over starting the room is managed by the owning domain
+        self._threadpool.addThread(target=self.__thread_classification)
 
     def _getNewScan(iterator):
         scan = next(iterator)
@@ -48,29 +47,30 @@ class FDSRoom(object):
             # window.append(getNewScan(iterator))
         return window
 
-    def _updateWindow(self, iterator, window):
-        window = window[1:] + self._getNewScan(iterator)
-
-    def _sensorThread(self):
+    def __thread_sensordata(self):
+        """
+        Get sensor scans and data asynchronously and continuously, spawned by
+        `__thread_classification()`.
+        """
         self._lidar_iterators: List[Iterable] = []
-        self._scan_windows: List[deque] = []
+        self._scans: List[deque] = []
         for lidar in self._lidars:
             lidar.start()
             iterator = lidar.iter_scans(min_len=FDSRoom._SCAN_MIN_WINDOW_SIZE)
             self._scan_iterators.append(iterator)
-            self._scan_windows.append(deque(
+            self._scans.append(deque(
                 iterable=[],
                 maxlen=FDSRoom._SCAN_MIN_WINDOW_SIZE))
 
         lidars_size: int = len(self._lidars)
         while self._sensor_sentinel:
-            # TODO: Use mutex to pause thread
+            # TODO: pause thread
             # Add to window
             for i in range(0, lidars_size):
                 iter = self._lidar_iterators[i]
                 scan = next(iter)
                 scan_fv = [(deg, dist) for _, deg, dist in scan]
-                self._scan_windows[i].append(scan_fv)
+                self._scans[i].append(scan_fv)
 
         for lidar in self._lidars:
             lidar.stop()
@@ -78,35 +78,41 @@ class FDSRoom(object):
         self._sensor_sentinel = True  # confirm for exit
         return 0
 
-    def __roomThread_lowProcess(self):
+    def __classificationProcessLow(self):
         while True:
             # TODO: Use mutex to pause thread
-            if True:  # pseduo code
+            if True:
                 self._activity_state = FDSRoom.ActivityState.HIGH
-                self.__roomThread_stateProcess = self.__roomThread_highProcess
+                self.__classificationProcess = self.__classificationProcessHigh
             break
         return
 
-    def __roomThread_highProcess(self):
+    def __classificationProcessHigh(self):
         pass
 
-    def _roomThread(self):
+    def __thread_classification(self):
+        """
+        Process data from sensor scans, spawned and started by thread pool.
+        """
         # function to run in its own thread for real-time processing
         # room thread controls sensor thread
         sensor_thread = threading.Thread(target=self._sensorThread)
         self._sensor_sentinel = True
         sensor_thread.run()
         # begin fall detection processing loop
-        self.__roomThread_stateProcess = self.__roomThread_lowProcess
+        self._activity_state = FDSRoom.ActivityState.LOW
+        self.__classificationProcess = self.__classificationProcessLow
         while True:
             try:
-                exit_status = self.__roomThread_stateProcess()
-                if exit_status == 0:
+                exit_status = self.__classificationProcess()
+                if (exit_status == 0):
                     break
             except FDSException as err:
                 raise err
 
         self._sensor_sentinel = False
-        sensor_thread.join(2.0)
-        
+        sensor_thread.join(FDSRoom._SENSOR_THREAD_TIMEOUT)
+        if (not self._sensor_sentinel):
+            self._logger.debug("Sensor thread did not join promptly, exceeded "
+                               "{0} seconds" % FDSRoom._SENSOR_THREAD_TIMEOUT)
         return 0

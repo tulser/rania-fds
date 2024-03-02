@@ -1,15 +1,15 @@
 from typing import Optional
 from enum import Enum
 
+from os.sys import realpath
 import logging
-from os.path import realpath
 import io
 import sys
-import socket
 import pickle
 
-from .fdscommon import FDSGlobalConfig, FDSException
-from .domain import FDSDomain
+from fdscommon import FDSGlobalConfig, FDSException
+from domain import FDSDomain
+import comm
 
 
 class FDSLogLevel(Enum):
@@ -35,61 +35,36 @@ class FDSLogFilter(logging.Filter):
 DEFAULT_CONFIG_PATH_POSIX = "/etc/rania-fds/fds.conf"
 
 # FDS instance global variables
-logger: logging.Logger = None
+_g_logger: logging.Logger = None
 
-fds_config: FDSGlobalConfig() = None
-fsocket: socket.socket = None
-fsocket_conns = None
+_g_fds_config: FDSGlobalConfig() = None
 
 
 def main(config_path: Optional[str] = None,
          loglevel: FDSLogLevel = FDSLogLevel.INFO):
     # TODO: implement config parsing and processing
-    global logger
-    global fds_config
+    global _g_logger
+    global _g_fds_config
     logger = logging.Logger("rania-fds", loglevel)
     logger.addFilter(FDSLogFilter())
+    _g_logger = logger
 
     if config_path is None:
-        # TODO: Refactor to check multiple paths
-        #       (for different systems/distributions)
+        # TODO: Refactor to check multiple paths (for different systems/
+        #       distributions) or rework for a database
         fds_config = _getFDSConfig(DEFAULT_CONFIG_PATH_POSIX)
     else:
         fds_config = _getFDSConfig(config_path)
+    _g_fds_config = fds_config
 
-    _initSocket(fds_config.sock_path)
+    socket_master = comm.FDSSocket(fds_config.sock_path, logger)
 
-    domain = FDSDomain(fds_config.dom_config, socket)
+    domain = FDSDomain(fds_config.dom_config, socket_master, logger)
     domain.start()
     return
 
 
-def _initSocket(sock_path: str):
-    global logger
-    global fsocket
-
-    try:
-        sock_path = realpath(sock_path)
-    except Exception as err:
-        raise err
-
-    fsocket = socket.socket(family=socket.AF_UNIX, type=socket.SOCK_STREAM)
-    fsocket.bind(sock_path)
-    # TODO: Create a thread to listen for socket connections
-    return
-
-
-def _socketHandler():
-    pass
-
-
-def _deinitSocket():
-    global logger
-    global fsocket
-
-
-def _getFDSConfig(config_path: str) -> FDSGlobalConfig:
-    global logger
+def _getFDSConfig(config_path: str, logger: logging.Logger) -> FDSGlobalConfig:
     try:
         config_path = realpath(config_path)
     except Exception as err:
