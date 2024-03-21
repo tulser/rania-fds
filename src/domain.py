@@ -6,7 +6,7 @@ import serial.tools.list_ports as list_ports
 import numpy as np
 
 from sensor import RPLidarEx
-from fdscommon import FDSDomainConfig, FDSException, FDSThreadPool
+from fdscommon import (FDSDomainConfig, FDSThreadPool, FDSException)
 from room import FDSRoom
 
 

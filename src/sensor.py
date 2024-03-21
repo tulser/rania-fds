@@ -1,12 +1,13 @@
-from typing import override, List
+from typing import (override, List)
 from dataclasses import dataclass
+from enum import IntEnum, auto
 
 import logging
 
-from fdscommon import FDSRoomConfig
-
 import numpy as np
 import rplidar
+
+from fdscommon import FDSRoomConfig
 
 
 @dataclass
@@ -40,20 +41,35 @@ class SensorInfo:
     calibration: SensorCalibration
 
 
+class SensorClassType(IntEnum):
+    LIDAR = auto()
+
+
+class SensorDeviceType(IntEnum):
+    pass
+
+
+class LidarDeviceType(IntEnum):
+    RPLIDAR = auto()
+
+
 class Sensor(object):
     """
     Abstract class for a generic sensor type.
     """
 
-    _CLASS_TYPE: int
-    _DEVICE_TYPE: int
-
     @property
-    def classtype(cls):
+    @classmethod
+    def classtype(cls) -> int:
         raise NotImplementedError
 
     @property
-    def devicetype(cls):
+    @classmethod
+    def devicetype(cls) -> int:
+        raise NotImplementedError
+
+    @property
+    def calibration(self) -> SensorCalibration:
         raise NotImplementedError
 
 
@@ -62,11 +78,23 @@ class Lidar(Sensor):
     Abstract subclass for a generic LiDAR type.
     """
 
-    _CLASS_TYPE = 1
-
     @override
-    def classtype(cls):
-        return cls._CLASS_TYPE
+    @property
+    @classmethod
+    def classtype(cls) -> int:
+        return SensorClassType.LIDAR
+
+    def gerRawData(self) -> np.ndarray:
+        raise NotImplementedError
+
+    def getFilteredData(self) -> np.ndarray:
+        raise NotImplementedError
+
+    def startScanning(self):
+        raise NotImplementedError
+
+    def stopScanning(self):
+        raise NotImplementedError
 
 
 # TODO: Consider moving or adding driver/dependency code into this class to
@@ -76,22 +104,74 @@ class RPLidar(Lidar, rplidar.RPLidar):
     Implementation for RPLidar devices.
     """
 
-    _DEVICE_TYPE = 1
+    _MIN_SCAN_LEN_DEFAULT = 5
 
     def __init__(self, port: str, calibration: RPLidarCalibration,
                  baudrate: int = 115200, timeout: int = 1,
+                 min_scan_len: int = 5,
                  logger: logging.Logger = None):
-        super().__init__(self, port, baudrate, timeout, logger)
+        self.__rpsup = super(rplidar.RPLidar, self)  # alias for RPL superclass
+        self.__rpsup.__init__(self, port, baudrate, timeout, logger)
+        self._min_scan_len = min_scan_len
         self._calibration = calibration
         self._logger = logger
 
     @override
-    def devicetype(cls):
-        return cls._DEVICE_TYPE
+    @property
+    @classmethod
+    def devicetype(cls) -> int:
+        return LidarDeviceType.RPLIDAR
+
+    @override
+    @property
+    def calibration(self) -> RPLidarCalibration:
+        return self._calibration
+
+    @override
+    def getRawData(self) -> np.ndarray:
+        scan = next(self.__iterator)
+        scan_fv = [(deg, dist) for _, deg, dist in scan]
+        return np.array(scan_fv, dtype=np.double)
+
+    @override
+    def getFilteredData(self) -> np.ndarray:
+        scan = self.getRawData()
+        # TODO: Implement filtering
+        return scan
+
+    @override
+    def startScanning(self):
+        if self.__iterator is None:
+            self.__iterator = self.__rpsup.iter_scans(
+                min_len=self._min_scan_len)
+        self.__rpsup.start_motor()
+        self.__rpsup.start()
+
+    @override
+    def stopScanning(self):
+        self.__rpsup.stop_motor()
+        self.__rpsup.stop()
 
 
-def getSensors(room_config: FDSRoomConfig,
-               logger: logging.Logger) -> List[Sensor]:
+def findSensors(logger: logging.Logger):
+    """
+    Scan for supported sensors attached or connected to the localhost.
+    """
+    raise NotImplementedError
+
+
+def getSensors(dom_config: FDSDomainConfig,
+                            logger: logging.Logger)
+    """
+    Initialize all sensors allocated to a domain.
+    """
+
+
+def getRoomSensors(room_config: FDSRoomConfig,
+                   logger: logging.Logger) -> List[Sensor]:
+    """
+    Get sensors allocated to a room 
+    """
     sensors = []
     for sensor in room_config.assigned_sensors:
         # TODO: This implementation is limited to using RPLidar and this code
