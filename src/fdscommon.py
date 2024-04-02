@@ -1,7 +1,9 @@
-from typing import List
+from typing import (List, Tuple)
 from dataclasses import dataclass
 
 import threading
+
+import numpy as np
 
 from sensor import SensorInfo
 
@@ -23,6 +25,7 @@ class FDSDomainConfig:
 @dataclass
 class FDSGlobalConfig:
     socket_path: str
+    lidar_training: Tuple[np.ndarray, np.ndarray]
     dom_config: FDSDomainConfig
 
 

@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import rplidar
 
-from fdscommon import FDSRoomConfig
+from fdscommon import (FDSDomainConfig, FDSRoomConfig)
 
 
 @dataclass
@@ -97,8 +97,7 @@ class Lidar(Sensor):
         raise NotImplementedError
 
 
-# TODO: Consider moving or adding driver/dependency code into this class to
-#       avoid multiple instances of loggers.
+# TODO: Consider moving or adding driver/dependency code into this class
 class RPLidar(Lidar, rplidar.RPLidar):
     """
     Implementation for RPLidar devices.
@@ -131,7 +130,7 @@ class RPLidar(Lidar, rplidar.RPLidar):
     def getRawData(self) -> np.ndarray:
         scan = next(self.__iterator)
         scan_fv = [(deg, dist) for _, deg, dist in scan]
-        return np.array(scan_fv, dtype=np.double)
+        return np.array(scan_fv)
 
     @override
     def getFilteredData(self) -> np.ndarray:
@@ -160,11 +159,11 @@ def findSensors(logger: logging.Logger):
     raise NotImplementedError
 
 
-def getSensors(dom_config: FDSDomainConfig,
-                            logger: logging.Logger)
+def getSensors(dom_config: FDSDomainConfig, logger: logging.Logger):
     """
     Initialize all sensors allocated to a domain.
     """
+    pass
 
 
 def getRoomSensors(room_config: FDSRoomConfig,

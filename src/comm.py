@@ -5,6 +5,18 @@ import socket
 import logging
 
 
+class FDSEvent:
+    def __init__(self):
+        self._domain_id = 0
+        return
+
+
+class FDSFallEvent(FDSEvent):
+    def __init__(self, room_id):
+        self._room_id = room_id
+        return
+
+
 class FDSSocket(object):
     """
     Class for managing a global socket connection from the FDS to potentially
@@ -23,7 +35,7 @@ class FDSSocket(object):
         # TODO: Create a thread to listen for socket connections
 
         self._socket_handle = socket_handle
-        self._listener_thread = Thread(target=self._listenerThreadProc,
+        self._listener_thread = Thread(target=self.__listenerThreadProc,
                                        name="FDS Socket Listener")
 
         return self
@@ -31,7 +43,10 @@ class FDSSocket(object):
     def startListener(self):
         self._listener_thread.run()
 
-    def _listenerThreadProc(self):
+    def __listenerThreadProc(self):
+        pass
+
+    def emitEvent(self, FDSEvent):
         pass
 
     def sendMessage(self):
