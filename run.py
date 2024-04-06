@@ -1,4 +1,4 @@
-from src.fds import main
+from src.fds import main as fds_main
 
 if __name__ == "__main__":
-    main()
+    fds_main()

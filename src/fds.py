@@ -34,35 +34,6 @@ class FDSLogFilter(logging.Filter):
 # Use for testing
 DEFAULT_CONFIG_PATH_POSIX = "/etc/rania-fds/fds.conf"
 
-# FDS instance global variables
-_g_logger: logging.Logger = None
-
-_g_fds_config: FDSGlobalConfig() = None
-
-
-def main(config_path: Optional[str] = None,
-         loglevel: FDSLogLevel = FDSLogLevel.INFO):
-    # TODO: implement config parsing and processing
-    global _g_logger
-    global _g_fds_config
-    logger = logging.Logger("rania-fds", loglevel)
-    logger.addFilter(FDSLogFilter())
-    _g_logger = logger
-
-    if config_path is None:
-        # TODO: Refactor to check multiple paths (for different systems/
-        #       distributions) or rework for a database
-        fds_config = _getFDSConfig(DEFAULT_CONFIG_PATH_POSIX)
-    else:
-        fds_config = _getFDSConfig(config_path)
-    _g_fds_config = fds_config
-
-    socket_master = comm.FDSSocket(fds_config.sock_path, logger)
-
-    domain = FDSDomain(fds_config.dom_config, socket_master, logger)
-    domain.start()
-    return
-
 
 def _getFDSConfig(config_path: str, logger: logging.Logger) -> FDSGlobalConfig:
     try:
@@ -83,6 +54,33 @@ def _getFDSConfig(config_path: str, logger: logging.Logger) -> FDSGlobalConfig:
             # NOTE: For this implementation, we assume there is one domain that
             #       is equivalent to the FDS, i.e, a domain represents an FDS
             return FDSGlobalConfig()
+
+
+def _getDefaultFDSConfig() -> FDSGlobalConfig:
+    pass
+
+
+def main(config_path: Optional[str] = None,
+         loglevel: FDSLogLevel = FDSLogLevel.INFO):
+    logger = logging.Logger("rania-fds", loglevel)
+    logger.addFilter(FDSLogFilter())
+
+    fds_config = _getDefaultFDSConfig()
+
+    # TODO: Get and parse config from filesystem, potentially to overwrite
+    #       aspects of the default config.
+    # if config_path is None:
+    #     # TODO: Refactor to check multiple paths (for different systems/
+    #     #       distributions) or rework for a database
+    #     fds_config = _getFDSConfig(DEFAULT_CONFIG_PATH_POSIX)
+    # else:
+    #     fds_config = _getFDSConfig(config_path)
+
+    socket_master = comm.FDSSocket(fds_config.sock_path, logger)
+
+    domain = FDSDomain(fds_config.dom_config, socket_master, logger)
+    domain.start()
+    return
 
 
 if __name__ == "__main__":

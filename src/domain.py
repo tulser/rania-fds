@@ -3,11 +3,11 @@ from typing import List, Optional
 import logging
 
 import serial.tools.list_ports as list_ports
-import numpy as np
 
-from sensor import RPLidarEx
-from fdscommon import (FDSDomainConfig, FDSThreadPool, FDSException)
-from room import FDSRoom
+from .sensor import RPLidar
+from .fdscommon import FDSDomainConfig, FDSThreadPool, FDSException
+from .room import FDSRoom
+from .comm import FDSSocket, FDSFallEvent
 
 
 class FDSDomain(object):
@@ -16,8 +16,10 @@ class FDSDomain(object):
     dwelling. A fall detection system (FDS) is an instance of the class.
     """
 
-    def __init__(self, dom_config: FDSDomainConfig, logger: logging.Logger):
+    def __init__(self, dom_config: FDSDomainConfig, socket: FDSSocket,
+                 logger: logging.Logger):
         self._dom_config = dom_config
+        self.__socket = socket
         self._logger = logger
         self._rooms = []
         self._thread_pool = FDSThreadPool()
@@ -30,10 +32,15 @@ class FDSDomain(object):
             self._rooms.append(FDSRoom(room_config, self._thread_pool,
                                        self._logger))
 
-    def start(self):
-        return self._runRoomThreads()
+    def _roomEmitFallEvent(self, room_id):
+        fe = FDSFallEvent(0, room_id)
+        self.__socket.emitEvent(fe)
+        return
 
-    def _runRoomThreads(self):
+    def start(self):
+        return self._runThreads()
+
+    def _runThreads(self):
         self._thread_pool.runThreads()
 
     # FIXME: account for changed rplidar dependency (use .sensor module)
@@ -46,14 +53,11 @@ class FDSDomain(object):
         if ports is None:
             lidar_ports: List[str] = []
             for port in list_ports.comports():
-                if RPLidarEx.is_valid_device(port.device):
+                if RPLidar.is_valid_device(port.device):
                     lidar_ports.append(port.device)
         else:
             for port in ports:
-                if RPLidarEx.is_valid_device(port):
+                if RPLidar.is_valid_device(port):
                     list_ports.append(port)
 
         return lidar_ports
-
-    def _initializeLidars(self, ids: List[str]):
-        pass

@@ -87,7 +87,15 @@ class Lidar(Sensor):
     def gerRawData(self) -> np.ndarray:
         raise NotImplementedError
 
-    def getFilteredData(self) -> np.ndarray:
+    def getFilteredData(self) -> (np.ndarray, np.ndarray):
+        """
+        Get filtered data from the sensor using the set calibration scheme for
+        processing raw scan data.
+
+        :return: A tuple of two ndarrays, (filtered data, culled data), with
+                 shape (n, 2) and shape (m, 2) respectively.
+        """
+
         raise NotImplementedError
 
     def startScanning(self):
@@ -133,10 +141,10 @@ class RPLidar(Lidar, rplidar.RPLidar):
         return np.array(scan_fv)
 
     @override
-    def getFilteredData(self) -> np.ndarray:
+    def getFilteredData(self) -> (np.ndarray, np.ndarray):
         scan = self.getRawData()
         # TODO: Implement filtering
-        return scan
+        return (scan, scan)
 
     @override
     def startScanning(self):
@@ -169,13 +177,16 @@ def getSensors(dom_config: FDSDomainConfig, logger: logging.Logger):
 def getRoomSensors(room_config: FDSRoomConfig,
                    logger: logging.Logger) -> List[Sensor]:
     """
-    Get sensors allocated to a room 
+    Get sensors allocated to a room.
+
+    :return: A list of initialized sensor objects corresponding to the those
+             listed in the given configuration.
     """
     sensors = []
     for sensor in room_config.assigned_sensors:
         # TODO: This implementation is limited to using RPLidar and this code
         #       assumes as such. Future expansions to use multiple sensors of
-        #      heterogenous device types or sensor classes should correct this.
+        #       heterogenous models or sensor classes should correct this.
         newsensor = RPLidar(sensor.location, sensor.calibration, logger)
         sensors.append(newsensor)
     return sensors
