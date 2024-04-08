@@ -7,14 +7,16 @@ import io
 import sys
 import pickle
 
-from fdscommon import FDSGlobalConfig, FDSException
-from domain import FDSDomain
+from .fdscommon import FDSGlobalConfig, FDSDomainConfig, FDSRoomConfig, \
+    FDSException
+from .domain import FDSDomain
 import comm
+from .sensor import getSensors
 
 
 class FDSLogLevel(Enum):
-    INFO = logging.INFO
     DEBUG = logging.DEBUG
+    INFO = logging.INFO
     WARNING = logging.WARNING
     ERROR = logging.ERROR
     CRITICAL = logging.CRITICAL
@@ -39,9 +41,8 @@ def _getFDSConfig(config_path: str, logger: logging.Logger) -> FDSGlobalConfig:
     try:
         config_path = realpath(config_path)
     except Exception as err:
-        logger.log(logging.ERROR,
-                   (f"Cannot open config file at path "
-                    f"\"{config_path}\": {err}"))
+        logger.error(f"Cannot open config file at path \"{0}\": {1}"
+                     .format(config_path, err))
         raise err
 
     try:
@@ -57,12 +58,45 @@ def _getFDSConfig(config_path: str, logger: logging.Logger) -> FDSGlobalConfig:
 
 
 def _getDefaultFDSConfig() -> FDSGlobalConfig:
-    pass
+    """
+    Get the base configuration for the fall detection system
+
+    :return: A basic global FDS configuration object.
+    :rtype: FDSGlobalConfig
+    """
+
+    gc = FDSGlobalConfig()
+    gc.socket_path = f"./fds{0}".format(0)
+    gc.dom_config = FDSDomainConfig()
+
+
+def startFDS(fds_config: FDSGlobalConfig, logger: logging.Logger):
+    """
+    Start the fall detection system using the provided configuration.
+    """
+
+    logger.info("Starting fall detection system.")
+    socket_master = comm.FDSSocket(fds_config.sock_path, logger)
+    sensors = getSensors(fds_config.sensors)
+
+    domain = FDSDomain(fds_config.dom_config, socket_master, logger)
+    domain.start()
+    return
 
 
 def main(config_path: Optional[str] = None,
          loglevel: FDSLogLevel = FDSLogLevel.INFO):
-    logger = logging.Logger("rania-fds", loglevel)
+    """
+    True entry point for the fall detection system program.
+    The configuration for the program is deserialized, parsed, and then used to
+    start the fall detection system.
+
+    :param Optional[str] config_path: A path to a config, overriding the
+        default search paths.
+    :param FDSLogLevel loglevel: The level to log events in the program.
+    """
+
+    logger = logging.Logger("fds", loglevel)
     logger.addFilter(FDSLogFilter())
 
     fds_config = _getDefaultFDSConfig()
@@ -76,10 +110,7 @@ def main(config_path: Optional[str] = None,
     # else:
     #     fds_config = _getFDSConfig(config_path)
 
-    socket_master = comm.FDSSocket(fds_config.sock_path, logger)
-
-    domain = FDSDomain(fds_config.dom_config, socket_master, logger)
-    domain.start()
+    startFDS(fds_config, logger)
     return
 
 

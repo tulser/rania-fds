@@ -1,4 +1,5 @@
-from typing import (override, List)
+from typing import override, List, Tuple
+from abc import abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum, auto
 
@@ -7,7 +8,7 @@ import logging
 import numpy as np
 import rplidar
 
-from fdscommon import (FDSDomainConfig, FDSRoomConfig)
+from .fdscommon import FDSGlobalConfig, FDSRoomConfig
 
 
 @dataclass
@@ -45,10 +46,6 @@ class SensorClassType(IntEnum):
     LIDAR = auto()
 
 
-class SensorDeviceType(IntEnum):
-    pass
-
-
 class LidarDeviceType(IntEnum):
     RPLIDAR = auto()
 
@@ -60,15 +57,18 @@ class Sensor(object):
 
     @property
     @classmethod
+    @abstractmethod
     def classtype(cls) -> int:
         raise NotImplementedError
 
     @property
     @classmethod
+    @abstractmethod
     def devicetype(cls) -> int:
         raise NotImplementedError
 
     @property
+    @abstractmethod
     def calibration(self) -> SensorCalibration:
         raise NotImplementedError
 
@@ -84,10 +84,12 @@ class Lidar(Sensor):
     def classtype(cls) -> int:
         return SensorClassType.LIDAR
 
-    def gerRawData(self) -> np.ndarray:
+    @abstractmethod
+    def getRawData(self) -> np.ndarray:
         raise NotImplementedError
 
-    def getFilteredData(self) -> (np.ndarray, np.ndarray):
+    @abstractmethod
+    def getFilteredData(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get filtered data from the sensor using the set calibration scheme for
         processing raw scan data.
@@ -98,9 +100,11 @@ class Lidar(Sensor):
 
         raise NotImplementedError
 
+    @abstractmethod
     def startScanning(self):
         raise NotImplementedError
 
+    @abstractmethod
     def stopScanning(self):
         raise NotImplementedError
 
@@ -119,9 +123,9 @@ class RPLidar(Lidar, rplidar.RPLidar):
                  logger: logging.Logger = None):
         self.__rpsup = super(rplidar.RPLidar, self)  # alias for RPL superclass
         self.__rpsup.__init__(self, port, baudrate, timeout, logger)
-        self._min_scan_len = min_scan_len
-        self._calibration = calibration
-        self._logger = logger
+        self.__min_scan_len = min_scan_len
+        self.__calibration = calibration
+        self.__logger = logger
 
     @override
     @property
@@ -132,7 +136,7 @@ class RPLidar(Lidar, rplidar.RPLidar):
     @override
     @property
     def calibration(self) -> RPLidarCalibration:
-        return self._calibration
+        return self.__calibration
 
     @override
     def getRawData(self) -> np.ndarray:
@@ -167,26 +171,38 @@ def findSensors(logger: logging.Logger):
     raise NotImplementedError
 
 
-def getSensors(dom_config: FDSDomainConfig, logger: logging.Logger):
-    """
-    Initialize all sensors allocated to a domain.
-    """
+_g_sensor_type_class_map: dict = {
+    SensorClassType.LIDAR: {
+        LidarDeviceType.RPLIDAR: RPLidar
+    }
+}
+
+
+class FDSSensorTypeException(Exception):
     pass
 
 
-def getRoomSensors(room_config: FDSRoomConfig,
-                   logger: logging.Logger) -> List[Sensor]:
+def getSensors(sensors_info: List[SensorInfo], logger: logging.Logger
+               ) -> List[Sensor]:
     """
-    Get sensors allocated to a room.
+    Initialize all sensors used by the FDS.
 
-    :return: A list of initialized sensor objects corresponding to the those
-             listed in the given configuration.
+    :param List[SensorInfo] sensors_info: A list of SensorInfos with details
+        for Initializing Sensors
+    :param logging.Logger logger: A logger for logging errors.
+    :return: A list of Sensors
+    :rtype: List[Sensor]
     """
-    sensors = []
-    for sensor in room_config.assigned_sensors:
-        # TODO: This implementation is limited to using RPLidar and this code
-        #       assumes as such. Future expansions to use multiple sensors of
-        #       heterogenous models or sensor classes should correct this.
-        newsensor = RPLidar(sensor.location, sensor.calibration, logger)
-        sensors.append(newsensor)
-    return sensors
+    global _g_sensor_type_class_map
+    sensors_list = []
+    for si in sensors_info:
+        try:
+            # Get the corresponding class from the map to construct
+            cls: Sensor = _g_sensor_type_class_map[si.classtype][si.devicetype]
+            sensor = cls(si.location, si.calibration, logger=logger)
+            sensors_list.append(sensor)
+        except KeyError:
+            logger.error(f"Sensor info for `{0}` had bad class or device type."
+                         .format(si.location))
+            raise FDSSensorTypeException
+    return sensors_list

@@ -23,11 +23,10 @@ class FDSDomain(object):
         self._logger = logger
         self._rooms = []
         self._thread_pool = FDSThreadPool()
-        self._initalizeRooms()
+        self.__initalizeRooms()
 
-    def _initalizeRooms(self):
-        # TODO: deconstruct domconfig to room tuples
-        room_configs = self._dom_config
+    def __initalizeRooms(self):
+        room_configs = self._dom_config.room_configs
         for room_config in room_configs:
             self._rooms.append(FDSRoom(room_config, self._thread_pool,
                                        self._logger))
@@ -43,7 +42,6 @@ class FDSDomain(object):
     def _runThreads(self):
         self._thread_pool.runThreads()
 
-    # FIXME: account for changed rplidar dependency (use .sensor module)
     def getValidLidarPorts(ports: Optional[List[str]] = None) -> List[str]:
         """
         Detect and return a list of ports associated with [RP]Lidar devices.

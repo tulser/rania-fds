@@ -5,7 +5,7 @@ import threading
 
 import numpy as np
 
-from sensor import SensorInfo
+from .sensor import SensorInfo
 
 
 class FDSException(Exception):
@@ -14,7 +14,7 @@ class FDSException(Exception):
 
 @dataclass
 class FDSRoomConfig:
-    assigned_sensors: List[SensorInfo]
+    sensors_asid: List[str]
 
 
 @dataclass
@@ -25,8 +25,13 @@ class FDSDomainConfig:
 @dataclass
 class FDSGlobalConfig:
     socket_path: str
-    lidar_training: Tuple[np.ndarray, np.ndarray]
+    sensors: List[SensorInfo]
     dom_config: FDSDomainConfig
+
+
+@dataclass
+class FDSGlobalTrainingSet:
+    lidar_training: Tuple[np.ndarray, np.ndarray]
 
 
 class FDSRoomThreadPool(object):

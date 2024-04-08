@@ -10,9 +10,8 @@ import numpy as np
 
 import sensor
 import algs
-from domain import FDSDomain
-from fdscommon import (FDSRoomConfig, FDSThreadPool, FDSException)
-import comm
+from .domain import FDSDomain
+from .fdscommon import FDSRoomConfig, FDSThreadPool, FDSException
 
 
 class FDSRoom(object):
@@ -53,10 +52,14 @@ class FDSRoom(object):
         self.__lidar_algs = algs.LidarAlgSet(dbs_eps=0.5, dbs_min_samples=6)
 
         # Execution control over the room is managed by the owning domain
-        self._threadpool.addThread(target=self.__thread_classification)
+        parent_domain._thread_pool.addThread(
+            target=self.__thread_classification)
+        parent_domain._thread_pool.addThread(
+            target=self.__thread_sensorscan)
 
-    def __thread_sensordata(self):
+    def __thread_sensorscan(self):
         """
+        Thread function.
         Get sensor scans and data asynchronously and continuously, spawned by
         `__thread_classification()`.
         """
@@ -148,6 +151,7 @@ class FDSRoom(object):
 
     def __thread_classification(self):
         """
+        Thread function.
         Process data from sensor scans, spawned and started by thread pool.
         This function controls state transitions for different classification
         modes.
@@ -166,7 +170,7 @@ class FDSRoom(object):
 
         # TODO: pass training data
         # self.__lidar_knn = self.__lidar_knn.fit(training data, labels)
-        # Begin fall detection processing loop using low power classification
+        # Beginfall detection processing loop using low power classification
         self._activity_state = FDSRoom.ActivityState.LOW
         self.__classificationProcess = self.__classificationProcessLow
         # Run loop, classificationProcess method pointer is set in
