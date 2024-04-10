@@ -25,6 +25,14 @@ def clusterScan(scan):
     labels = dbscan.fit_predict(data_normalized)
     return labels
 
+def filter_coordinates(coordinates, integers):
+     filtered_coordinates = []
+     for coord, num in zip(coordinates, integers):
+          if num != -1:
+               filtered_coordinates.append(coord)
+     
+     return filtered_coordinates
+
 def plot(x,y):
      plt.figure(figsize=(8, 6))
      plt.scatter(x, y, c='blue', s=10)  
@@ -112,13 +120,16 @@ for i, scan in enumerate(lidar.iter_scans(min_len=5, max_buf_meas=False)):
           if counter == 11:
                coordinate_pairs = list(zip(spotX, spotY))
                lidar_data = clusterScan(coordinate_pairs)
-               print(coordinate_pairs)
-               print(lidar_data)
-               #filtered_points = coordinate_pairs[lidar_data == 0]
-               #x_filtered = filtered_points[:, 0]
-               #y_filtered = filtered_points[:, 1]
-               #plot(x_filtered, y_filtered)
-               plot(spotX, spotY)
+               #print(coordinate_pairs)
+               #print(lidar_data) # represents groups and outliers, -1 represents an outlier
+               #plot(spotX, spotY) #unfiltered points
+
+               filtered_points = filter_coordinates(coordinate_pairs, lidar_data)
+               print(filtered_points)
+               x_filtered = [coord[0] for coord in filtered_points]
+               y_filtered = [coord[1] for coord in filtered_points]
+               plot(x_filtered, y_filtered)
+               
               
                lidar.stop()
                lidar.stop_motor()
