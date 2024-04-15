@@ -98,6 +98,7 @@ class FDSRoom(object):
         """
 
         if not self.__pause_event.is_set():
+            # Room transitions to PAUSED state, wait for unpause
             self._activity_state = self.ActivityState.PAUSED
             self.__pause_event.wait(timeout=None)
             return True
@@ -106,12 +107,26 @@ class FDSRoom(object):
     def __thread_sensorScanPull(self):
         """
         Thread function.
-        Asynchronously buffer sensor scans from `__thread_sensorScan` to feed
-        to `__thread_classification`.
+        Asynchronously copy sensor scans from alternate windows to ensure
+        `__thread_sensorScan` is able to produce and store new, up-tod-date
+        scans for `__thread_classification` to consume.
         """
 
+        self.__sensor_pull_event.wait(timeout=None)
         while self._sensor_sentinel:
-            
+            self.__sensor_pull_event.clear()
+
+            # Copy scans from the alternate windows
+            for i in range(0, len(self._lidar_sensors)):
+                for scan in self.__lidar_scan_windows_alt[i]:
+                    self.__lidar_scan_windows.append(scan)
+
+            # Clear alternate windows - to prevent adding old scans to the
+            # main windows
+            for i in range(0, len(self._lidar_sensors)):
+                self.__lidar_scan_windows_alt[i].clear()
+
+            self.__sensor_pull_event.wait(timeout=None)
         return 0
 
     def __thread_sensorScan(self):
@@ -121,27 +136,53 @@ class FDSRoom(object):
         `__thread_classification()`.
         """
 
-        # Initialize queues
-        self._fil_scans: List[deque] = []
-        for lidar in self._lidar_sensors:
-            lidar.startScanning()
-            self._fil_scans.append(deque(
+        # Sensor scan thread controls pull thread
+        sensor_pull_thread = threading.Thread(
+            target=self.__thread_sensorScanPull,
+            name="FDS Sensor Data Pull")
+        sensor_pull_thread.run()
+
+        # Initialize fixed-length queues
+        self.__lidar_scan_windows: List[deque] = []
+        self.__lidar_scan_windows_alt = []
+        for lidar in self.__lidar_sensors:
+            self.__lidar_scan_windows.append(deque(
+                iterable=[],
+                maxlen=FDSRoom._SCAN_MIN_WINDOW_SIZE))
+            self.__lidar_scan_windows_alt.append(deque(
                 iterable=[],
                 maxlen=FDSRoom._SCAN_MIN_WINDOW_SIZE))
 
+        # Start the sensors
+        for lidar in self.__lidar_sensors:
+            lidar.startScanning()
+
         # Begin sensor sampling/scan loop
-        lidars_size: int = len(self._lidar_sensors)
         while self._sensor_sentinel:
-            self.__pause_event.wait(timeout=None)
+            # Check for pause event
+            if not self.__pause_event.is_set():
+                # Room transitions to PAUSED state, wait for unpause
+                self.__pause_event.wait(timeout=None)
 
-            # Add to window
-            for i in range(0, lidars_size):
-                lidar = self._lidar_sensors[i]
-                self._fil_scans[i].append(lidar.getFilteredData())
+            # Prevent the thread from pushing scans to the main queues
+            # when the classification thread requests data.
+            if not self.__sensor_pull_lock.locked():
+                # Add to window
+                for i in range(0, len(self.__lidar_sensors)):
+                    lidar = self.__lidar_sensors[i]
+                    self.__lidar_scan_windows[i].append(lidar.getRawData())
+            else:
+                # Add to temporary windows
+                for i in range(0, len(self.__lidar_sensors)):
+                    lidar = self.__lidar_sensors[i]
+                    self.__lidar_scan_windows_alt[i].append(lidar.getRawData())
 
-        for lidar in self._lidar_sensors:
+        for lidar in self.__lidar_sensors:
             lidar.stopScanning()
 
+        # Ensure pull thread stops
+        self.__sensor_pull_event.set()
+        sensor_pull_thread.join()
         self._sensor_sentinel = True  # Reset to true for exit
         return 0
 
@@ -153,8 +194,20 @@ class FDSRoom(object):
         :rtype: Iterable[np.ndarray]
         """
 
-        with self.__sensor_pull_lock:
-        return
+        sensor_windows = []
+        # Freeze the main set of queues...
+        self.__sensor_ret_cond = False
+        # ...and start copying them.
+        for i in range(0, len(self._lidar_sensors)):
+            # Copy the lists backing the windows (the deques)
+            scan_window = list(self.__lidar_scan_windows[i]).copy()
+            sensor_windows.append(scan_window)
+        # Let the sensorPull thread add scans from the alternate windows
+        self.__sensor_pull_event.set()
+        # Unfreeze the main set of queues
+        self.__sensor_ret_cond = True
+
+        return sensor_windows
 
     def __classificationProcessLow(self):
         """
@@ -167,23 +220,30 @@ class FDSRoom(object):
 
         self._activity_state = self.ActivityState.LOW
 
-        # Get lidar data
-        self.__pullLidarData()
-
         # Check for occupancy
+        lidar_windows = self.__pullLidarData()
+        # FIXME: Process with arbitrary sensors
+        lidar_window = lidar_windows[0]
+        lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
+
         (lidar_clusters, _) = \
-            self.__lidar_algs.clusterLidarScan(self._fil_scans)
+            self.__lidar_algs.clusterLidarScan(lidar_window_fil)
 
         time_tosleep = time.monotonic()
         while (len(lidar_clusters) == 0):
-            # TODO: use Event synchronization to (un)pause thread
+            sensor_windows = self.__pullLidarData()
+            # FIXME: Process with arbitrary sensors
+            lidar_window = sensor_windows[0]
+            lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
+
             (lidar_clusters, _) = \
-                self.__lidar_algs.clusterLidarScan(self._fil_scans)
+                self.__lidar_algs.clusterLidarScan(lidar_window_fil)
 
             time_tosleep = self.__LOW_CLASSIFY_PERIOD_SEC - \
                 (time.monotonic() - time_tosleep)
             time.sleep(time_tosleep)
 
+            # Checkpoint for pausing
             self.__checkPause()
 
             time_tosleep = time.monotonic()
@@ -203,11 +263,15 @@ class FDSRoom(object):
         # TODO: Run KNN here to process scan which caused changeover
 
         # Check for occupancy to ensure there exists clusters to process
+        lidar_windows = self.__pullLidarData()
+        # FIXME: Process with arbitrary sensors
+        lidar_window = lidar_windows[0]
+        lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
+
         (lidar_clusters, _) = \
-            self.__lidar_algs.clusterLidarScanAdv(self._fil_scans)
+            self.__lidar_algs.clusterLidarScanAdv(lidar_window_fil)
 
         while (len(lidar_clusters) != 0):
-            # TODO: use Event synchronization to (un)pause thread
             # Process each cluster
             for cluster in lidar_clusters:
                 # Process key samples
@@ -219,11 +283,17 @@ class FDSRoom(object):
                     self.__domain._emitFallEvent(self.__config.id)
                     break
 
+            # Checkpoint for pausing
             self.__checkPause()
+
+            lidar_windows = self.__pullLidarData()
+            # FIXME: Process with arbitrary sensors
+            lidar_window = lidar_windows[0]
+            lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
 
             # Keep checking for occupancy
             (lidar_clusters, _) = \
-                self.__lidar_algs.clusterLidarScanAdv(self._fil_scans)
+                self.__lidar_algs.clusterLidarScanAdv(lidar_window_fil)
 
         # Set the next state/function to transition to.
         self.__classificationProcess = self.__classificationProcessHigh
@@ -239,11 +309,12 @@ class FDSRoom(object):
 
         # Construct synchronization primitizes
         self.__pause_event = threading.Event()
-        self.__sensor_pull_lock = threading.Lock()
+        self.__sensor_ret_cond = True
+        self.__sensor_pull_event = threading.Event()
 
         # Room thread controls sensor thread, not the pool
         sensor_thread = threading.Thread(target=self.__thread_sensorScan,
-                                         name="FDS Sensor Data Pull Loop")
+                                         name="FDS Sensor Data Scan Loop")
         self._sensor_sentinel = True
         sensor_thread.run()
 
@@ -263,7 +334,7 @@ class FDSRoom(object):
         self._sensor_sentinel = False
         sensor_thread.join(self.__SENSOR_THREAD_TIMEOUT_SEC)
         if (not self._sensor_sentinel):
-            self._logger.debug("Sensor thread did not join promptly, exceeded "
-                               "{0} seconds"
-                               .format(self.__SENSOR_THREAD_TIMEOUT_SEC))
+            self.__logger.debug("Sensor thread did not join promptly, exceeded"
+                                " {0} seconds"
+                                .format(self.__SENSOR_THREAD_TIMEOUT_SEC))
         return 0

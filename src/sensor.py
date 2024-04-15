@@ -1,4 +1,4 @@
-from typing import override, List, Tuple
+from typing import override, List, Iterable
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum, auto
@@ -84,16 +84,28 @@ class Lidar(Sensor):
 
     @abstractmethod
     def getRawData(self) -> np.ndarray:
+        """
+        Get a scan from the sensor.
+
+        :return: A set of sample data with shape (n, 2), where samples are of
+            the form (degree, distance), with `degree` in units of degrees of
+            range [0-360), and `distance` in units of meters of range [0-inf).
+            Both units are of type `float`
+        :rtype: np.ndarray
+        """
+
         raise NotImplementedError
 
     @abstractmethod
-    def getFilteredData(self) -> Tuple[np.ndarray, np.ndarray]:
+    def filterData(self, data: Iterable[np.ndarray]) -> List[np.ndarray]:
         """
-        Get filtered data from the sensor using the set calibration scheme for
-        processing raw scan data.
+        Get filtered data using the set calibration scheme for
+        processing the input, raw scan data.
 
-        :return: A tuple of two ndarrays, (filtered data, culled data), with
-                 shape (n, 2) and shape (m, 2) respectively.
+        :param data: A list of scans to process.
+        :type data: Iterable[np.ndarray]
+        :return: A list of scans with filtered/culled samples.
+        :rtype: List[np.ndarray]
         """
 
         raise NotImplementedError
@@ -110,7 +122,7 @@ class Lidar(Sensor):
 # TODO: Consider moving or adding driver/dependency code into this class
 class RPLidar(Lidar, rplidar.RPLidar):
     """
-    Implementation for RPLidar devices.
+    Implementation for RPLidar LiDAR devices.
     """
 
     _MIN_SCAN_LEN_DEFAULT = 5
@@ -143,10 +155,10 @@ class RPLidar(Lidar, rplidar.RPLidar):
         return np.array(scan_fv)
 
     @override
-    def getFilteredData(self) -> (np.ndarray, np.ndarray):
-        scan = self.getRawData()
+    def filterData(self, data: List[np.ndarray]) -> List[np.ndarray]:
+
         # TODO: Implement filtering
-        return (scan, scan)
+        return data
 
     @override
     def startScanning(self):
