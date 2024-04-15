@@ -5,10 +5,8 @@ from os.sys import realpath
 import logging
 import io
 import sys
-import pickle
 
-from .fdscommon import FDSGlobalConfig, FDSDomainConfig, FDSRoomConfig, \
-    FDSException
+from .fdscommon import FDSGlobalConfig, FDSDomainConfig, FDSRoomConfig
 from .domain import FDSDomain
 import comm
 from .sensor import getSensors
@@ -23,21 +21,63 @@ class FDSLogLevel(Enum):
 
 
 class FDSLogFilter(logging.Filter):
+    """
+    Class for custom filtering behavior on Logger objects.
+    """
+
     def __init__(self, logpath: Optional[str] = None):
         self.logpath = logpath
 
     def filter(record: logging.LogRecord):
-        if record.level <= logging.WARNING:
+        if record.level <= logging.INFO:
             sys.stdout.write(record.msg)
         else:
             sys.stderr.write(record.msg)
 
 
-# Use for testing
-DEFAULT_CONFIG_PATH_POSIX = "/etc/rania-fds/fds.conf"
+# DEFAULT_CONFIG_PATH_POSIX = "/etc/rania-fds/fds.conf"
 
 
-def _getFDSConfig(config_path: str, logger: logging.Logger) -> FDSGlobalConfig:
+def _getDefaultFDSConfig() -> FDSGlobalConfig:
+    """
+    Get the base configuration for the FDS.
+
+    :return: A basic global FDSGlobalConfig object.
+    :rtype: FDSGlobalConfig
+    """
+
+    gc = FDSGlobalConfig()
+    gc.socket_path = f"./fds{0}".format(0)
+    gc.dom_config = FDSDomainConfig()
+    # TODO: add more
+    return gc
+
+
+def _getFDSConfig(config_path: Optional[str], logger: logging.Logger
+                  ) -> FDSGlobalConfig:
+    """
+    Get the user-defined configuration for the FDS and apply it over the
+    default configuration.
+
+    :param config_path: A filesystem path to the file containing the system
+        configuration, `None` to get the default configuration.
+    :type config_path: Optional[str]
+    :param logger: Logger to use for logging.
+    :type logger: Logger
+    :return: A global FDS configuration.
+    :rtype: FDSGlobalConfig
+    """
+
+    logger.info("Loading FDS configuration")
+
+    default_conf = _getDefaultFDSConfig()
+
+    if config_path is None:
+        return default_conf
+
+    # TODO: Refactor to check multiple default paths (for different systems/
+    #   distributions) to get a default configuration.
+
     try:
         config_path = realpath(config_path)
     except Exception as err:
@@ -57,22 +97,14 @@ def _getFDSConfig(config_path: str, logger: logging.Logger) -> FDSGlobalConfig:
             return FDSGlobalConfig()
 
 
-def _getDefaultFDSConfig() -> FDSGlobalConfig:
-    """
-    Get the base configuration for the fall detection system
-
-    :return: A basic global FDS configuration object.
-    :rtype: FDSGlobalConfig
-    """
-
-    gc = FDSGlobalConfig()
-    gc.socket_path = f"./fds{0}".format(0)
-    gc.dom_config = FDSDomainConfig()
-
-
 def startFDS(fds_config: FDSGlobalConfig, logger: logging.Logger):
     """
     Start the fall detection system using the provided configuration.
+
+    :param fds_config: Configuration for this FDS instance.
+    :type fds_config: FDSGlobalConfig
+    :param logger: Logger to use for logging throughout the FDS.
+    :type logger: Logger
     """
 
     logger.info("Starting fall detection system.")
@@ -91,24 +123,17 @@ def main(config_path: Optional[str] = None,
     The configuration for the program is deserialized, parsed, and then used to
     start the fall detection system.
 
-    :param Optional[str] config_path: A path to a config, overriding the
+    :param config_path: A path to a config, overriding the
         default search paths.
-    :param FDSLogLevel loglevel: The level to log events in the program.
+    :type config_path: Optional[str]
+    :param loglevel: The level to log events in the program.
+    :type loglevel: FDSLogLevel
     """
 
     logger = logging.Logger("fds", loglevel)
     logger.addFilter(FDSLogFilter())
 
-    fds_config = _getDefaultFDSConfig()
-
-    # TODO: Get and parse config from filesystem, potentially to overwrite
-    #       aspects of the default config.
-    # if config_path is None:
-    #     # TODO: Refactor to check multiple paths (for different systems/
-    #     #       distributions) or rework for a database
-    #     fds_config = _getFDSConfig(DEFAULT_CONFIG_PATH_POSIX)
-    # else:
-    #     fds_config = _getFDSConfig(config_path)
+    fds_config = _getFDSConfig(config_path, logger)
 
     startFDS(fds_config, logger)
     return

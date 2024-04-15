@@ -8,8 +8,6 @@ import logging
 import numpy as np
 import rplidar
 
-from .fdscommon import FDSGlobalConfig, FDSRoomConfig
-
 
 @dataclass
 class SensorCalibration:
@@ -164,13 +162,6 @@ class RPLidar(Lidar, rplidar.RPLidar):
         self.__rpsup.stop()
 
 
-def findSensors(logger: logging.Logger):
-    """
-    Scan for supported sensors attached or connected to the localhost.
-    """
-    raise NotImplementedError
-
-
 _g_sensor_type_class_map: dict = {
     SensorClassType.LIDAR: {
         LidarDeviceType.RPLIDAR: RPLidar
@@ -179,6 +170,10 @@ _g_sensor_type_class_map: dict = {
 
 
 class FDSSensorTypeException(Exception):
+    """
+    Exception class for raising errors related to bad indexing into the dict
+    `_g_sensor_type_class_map`.
+    """
     pass
 
 

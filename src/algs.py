@@ -1,5 +1,5 @@
-from typing import (List, Tuple)
-from enum import (Enum, auto)
+from typing import List, Tuple
+from enum import Enum, auto
 
 import math
 
@@ -9,7 +9,6 @@ from sklearn.neighbors import KNeighborsClassifier
 import numpy as np
 import scipy.ndimage as sp_nd
 
-from sensor import Lidar
 import util
 
 

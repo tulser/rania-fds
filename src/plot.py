@@ -28,7 +28,10 @@ def testplot():
     plot(x, y)
 
 
-class FDSPlotInstance(object):
+class Plotter(object):
+
+    def __thread_plotLoop(self):
+        pass
 
     def drawPlot():
         pass

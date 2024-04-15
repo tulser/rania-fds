@@ -1,13 +1,14 @@
-from typing import List, Optional
+from typing import Optional, Callable, Iterable, Any
 
 import logging
+import threading
 
-import serial.tools.list_ports as list_ports
-
-from .sensor import RPLidar
-from .fdscommon import FDSDomainConfig, FDSThreadPool, FDSException
+from .fdscommon import FDSDomainConfig
 from .room import FDSRoom
-from .comm import FDSSocket, FDSFallEvent
+from .ipc import FDSSocket, FDSFallEvent
+# FUTURE: Plot should eventually be removed with routines merged into FDSSocket
+#   or other status communicator to send plots over a socket
+from .plot import Plotter
 
 
 class FDSDomain(object):
@@ -16,46 +17,122 @@ class FDSDomain(object):
     dwelling. A fall detection system (FDS) is an instance of the class.
     """
 
-    def __init__(self, dom_config: FDSDomainConfig, socket: FDSSocket,
+    def __init__(self, domain_config: FDSDomainConfig, socket: FDSSocket,
                  logger: logging.Logger):
-        self._dom_config = dom_config
+        """
+        :param domain_config: A room specific configuration to use.
+        :type domain_config: FDSDomainConfig
+        :param socket: A communication interface to communicate with clients.
+        :type socket: FDSSocket
+        :param logger: The logger to use for logging.
+        :type logger: logging.Logger
+        """
+
+        self.__config = domain_config
         self.__socket = socket
-        self._logger = logger
-        self._rooms = []
-        self._thread_pool = FDSThreadPool()
+        self.__logger = logger
+        self.__rooms = []
+        self.__threads = []
+        self.__threads_condexit = threading.Condition()
+        self.__threads_toexit = 0
+
+        self.__plotter = Plotter()
+
+        self.addThread(self.__plotter.__thread_plotLoop,
+                       name="FDS Plot Loop")
         self.__initalizeRooms()
+        return
 
     def __initalizeRooms(self):
-        room_configs = self._dom_config.room_configs
-        for room_config in room_configs:
-            self._rooms.append(FDSRoom(room_config, self._thread_pool,
-                                       self._logger))
+        """
+        Initialize all rooms with given information from the domain
+        configuration.
+        """
 
-    def _roomEmitFallEvent(self, room_id):
-        fe = FDSFallEvent(0, room_id)
-        self.__socket.emitEvent(fe)
+        room_configs = self.__dom_config.room_configs
+        for room_config in room_configs:
+            self._rooms.append(FDSRoom(room_config, self, self.__logger))
+        return
+
+    def __threadWrapper(self, func: Callable[..., Any]):
+        """
+        Wrapper for the `addThread` function to wrap threads with counter code
+        to ensure the `wait` function unblocks and exits.
+        """
+
+        func()
+        with self.__threads_condexit:
+            self.__threads_toexit -= 1
+        self.__threads_condexit.notify(1)
+        return
+
+    def addThread(self, target: Callable[..., Any], name: Optional[str] = None,
+                  daemon: bool = False):
+        """
+        Add a thread to the pool before the domain starts it.
+
+        :param target: A function/callable to use as a thread
+        :type target: Callable[..., Any]
+        :param name: Name for the thread.
+        :type name: str
+        :param daemon: Indicate if the thread is a daemon thread if True
+        :type daemon: bool
+        """
+
+        thread = threading.Thread(target=self.__threadWrapper, args=(target),
+                                  name=name, daemon=daemon)
+        self.__threads_toexit += 1
+        self.__threads.append(thread)
+        return
+
+    def __runThreads(self):
+        """
+        Run domain threads in the thread pool.
+        Note: This function does not block.
+        """
+
+        for thread in self.__threads:
+            thread.run()
         return
 
     def start(self):
-        return self._runThreads()
-
-    def _runThreads(self):
-        self._thread_pool.runThreads()
-
-    def getValidLidarPorts(ports: Optional[List[str]] = None) -> List[str]:
         """
-        Detect and return a list of ports associated with [RP]Lidar devices.
-
-        :return: A list of strings indicating ports.
+        Start execution for the domain. Waits until the threads or the FDS
+        exits.
         """
-        if ports is None:
-            lidar_ports: List[str] = []
-            for port in list_ports.comports():
-                if RPLidar.is_valid_device(port.device):
-                    lidar_ports.append(port.device)
-        else:
-            for port in ports:
-                if RPLidar.is_valid_device(port):
-                    list_ports.append(port)
 
-        return lidar_ports
+        self.__runThreads()
+        self._wait()
+        return
+
+    def _wait(self):
+        """
+        Wait for all threads of the domain to return.
+        """
+
+        while self.__threads_toexit != 0:
+            self.__threads_condexit.wait(timeout=None)
+        return
+
+    def pause(self):
+        """
+        Pause all processing related to the domain.
+        """
+
+        for room in self.__rooms:
+            room.pauseThreads()
+        return
+
+    def _emitFallEvent(self, room_id):
+        """
+        Emit a fall event from this instance.
+        """
+
+        fe = FDSFallEvent(self.__config.id, room_id)
+        self.__socket.emitEvent(fe)
+        return
+
+    # FUTURE: Remake this to push data over the socket, rather than plot
+    def _pushData(self, ):
+        # TODO: Implement
+        pass

@@ -3,7 +3,6 @@ from abc import abstractmethod
 
 from threading import Thread
 from os.path import realpath
-import errno
 import logging
 import json
 

@@ -124,10 +124,3 @@ for i, scan in enumerate(lidar.iter_scans(min_len=5, max_buf_meas=False)):
                lidar.stop_motor()
                lidar.disconnect()
                quit()
-
-
-
-
-
-
-

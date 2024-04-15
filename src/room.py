@@ -1,6 +1,6 @@
-from typing import List
+from typing import List, Iterable
 
-from enum import Enum
+from enum import Enum, auto
 import logging
 import threading
 from collections import deque
@@ -11,60 +11,117 @@ import numpy as np
 import sensor
 import algs
 from .domain import FDSDomain
-from .fdscommon import FDSRoomConfig, FDSThreadPool, FDSException
+from .fdscommon import FDSRoomConfig, FDSException
 
 
 class FDSRoom(object):
     """
-    Class representing a room/spacial unit of an FDSDomain
+    Class representing a room/spacial unit of an FDSDomain.
     """
 
     class ActivityState(Enum):
         """
-        Enumeration of activity/processing states to convey processing state to
-        a connected RANIA hub (or programs/services in general).
+        Enumeration of activity/processing states representing the state of
+        processing and activity/occupancy.
         """
 
-        NONE = 0
-        LOW = 1
-        HIGH = 2
+        NONE = auto()
+        PAUSED = auto()
+        LOW = auto()
+        HIGH = auto()
 
-    _SENSOR_THREAD_TIMEOUT_SEC = 2.0
-    _SCAN_MIN_WINDOW_SIZE = 5
-    _LOW_CLASSIFY_PERIOD_SEC = 0.7
+    __SENSOR_THREAD_TIMEOUT_SEC = 2.0
+    __SCAN_MIN_WINDOW_SIZE = 5
+    __LOW_CLASSIFY_PERIOD_SEC = 0.7
 
-    def __init__(self, room_config: FDSRoomConfig, parent_domain: FDSDomain,
-                 thread_pool: FDSThreadPool, logger: logging.Logger):
-        self._roomconfig = room_config
-        self._domain = parent_domain
-        self._thread_pool = thread_pool
-        self._logger = logger
-        self._scans = np.ndarray(self._WINDOW_SIZE)
-        self._sensors = sensor.getRoomSensors(room_config, logger)
-        self._lidar_sensors = []
-        self._lidar_calibration = []
+    def __init__(self, room_config: FDSRoomConfig, domain_owner: FDSDomain,
+                 logger: logging.Logger):
+        """
+        :param room_config: A room specific configuration to use.
+        :type room_config: FDSRoomConfig
+        :param domain_owner: The domain object that owns this room.
+        :type domain_owner: FDSDomain
+        :param logger: The logger to use for logging.
+        :type logger: logging.Logger
+        """
+
+        self.__config = room_config
+        self.__domain = domain_owner
+        self.__logger = logger
+        self.__scans = np.ndarray(self._WINDOW_SIZE)
+        self.__sensors = sensor.getRoomSensors(room_config, logger)
+        self.__lidar_sensors = []
+        self.__lidar_calibration = []
         for s in self._sensors:
             if isinstance(s, sensor.RPLidar):
-                self._lidar_sensors.append(s)
-                self._lidar_geom_bounds.append(s.getCalibration().bounds)
+                self.__lidar_sensors.append(s)
 
         # Initialize algorithms with parameters
-        self.__lidar_algs = algs.LidarAlgSet(dbs_eps=0.5, dbs_min_samples=6)
+        # TODO: Need complete parameter set
+        self.__lidar_algs = algs.LidarAlgSet(dbs_eps=0.5,
+                                             dbs_min_samples=6)
 
         # Execution control over the room is managed by the owning domain
-        parent_domain._thread_pool.addThread(
-            target=self.__thread_classification)
-        parent_domain._thread_pool.addThread(
-            target=self.__thread_sensorscan)
+        domain_owner.addThread(target=self.__thread_classification,
+                               name="FDS Classification Thread")
+        return
 
-    def __thread_sensorscan(self):
+    def pauseThreads(self):
+        """
+        Pause threads in this room.
+        """
+
+        if self._activity_state is self.ActivityState.NONE:
+            raise FDSException()
+
+        self.__pause_event.clear()
+        return
+
+    def resumeThreads(self):
+        """
+        Resume threads in this room.
+        """
+
+        if self._activity_state is self.ActivityState.NONE:
+            raise FDSException()
+
+        if self._activity_state is self.ActivityState.PAUSED:
+            self.__pause_event.set()
+            return
+        raise FDSException()
+
+    def __checkPause(self) -> True:
+        """
+        Cause the thread to wait if the event has yet to be set (to resume).
+        :return: True if the thread had paused, false otherwise.
+        :rtype: bool
+        """
+
+        if not self.__pause_event.is_set():
+            self._activity_state = self.ActivityState.PAUSED
+            self.__pause_event.wait(timeout=None)
+            return True
+        return False
+
+    def __thread_sensorScanPull(self):
+        """
+        Thread function.
+        Asynchronously buffer sensor scans from `__thread_sensorScan` to feed
+        to `__thread_classification`.
+        """
+
+        while self._sensor_sentinel:
+            
+        return 0
+
+    def __thread_sensorScan(self):
         """
         Thread function.
         Get sensor scans and data asynchronously and continuously, spawned by
         `__thread_classification()`.
         """
 
-        # initialization
+        # Initialize queues
         self._fil_scans: List[deque] = []
         for lidar in self._lidar_sensors:
             lidar.startScanning()
@@ -72,10 +129,11 @@ class FDSRoom(object):
                 iterable=[],
                 maxlen=FDSRoom._SCAN_MIN_WINDOW_SIZE))
 
-        # begin scanning loop
+        # Begin sensor sampling/scan loop
         lidars_size: int = len(self._lidar_sensors)
         while self._sensor_sentinel:
-            # TODO: pause thread
+            self.__pause_event.wait(timeout=None)
+
             # Add to window
             for i in range(0, lidars_size):
                 lidar = self._lidar_sensors[i]
@@ -84,8 +142,19 @@ class FDSRoom(object):
         for lidar in self._lidar_sensors:
             lidar.stopScanning()
 
-        self._sensor_sentinel = True  # confirm for exit
+        self._sensor_sentinel = True  # Reset to true for exit
         return 0
+
+    def __pullLidarData(self) -> Iterable[np.ndarray]:
+        """
+        Pull sensor scans generated by the sensorScan thread.
+
+        :return: An ordered list of raw scans, ordered by increasing degree.
+        :rtype: Iterable[np.ndarray]
+        """
+
+        with self.__sensor_pull_lock:
+        return
 
     def __classificationProcessLow(self):
         """
@@ -96,7 +165,11 @@ class FDSRoom(object):
         exiting.
         """
 
-        self._activity_state = FDSRoom.ActivityState.LOW
+        self._activity_state = self.ActivityState.LOW
+
+        # Get lidar data
+        self.__pullLidarData()
+
         # Check for occupancy
         (lidar_clusters, _) = \
             self.__lidar_algs.clusterLidarScan(self._fil_scans)
@@ -107,9 +180,12 @@ class FDSRoom(object):
             (lidar_clusters, _) = \
                 self.__lidar_algs.clusterLidarScan(self._fil_scans)
 
-            time_tosleep = FDSRoom._LOW_CLASSIFY_PERIOD_SEC - \
+            time_tosleep = self.__LOW_CLASSIFY_PERIOD_SEC - \
                 (time.monotonic() - time_tosleep)
             time.sleep(time_tosleep)
+
+            self.__checkPause()
+
             time_tosleep = time.monotonic()
 
         # Set the next state/function to transition to.
@@ -122,8 +198,10 @@ class FDSRoom(object):
         activity state to find falls in a room with continued activity.
         """
 
-        self._activity_state = FDSRoom.ActivityState.HIGH
+        self._activity_state = self.ActivityState.HIGH
+
         # TODO: Run KNN here to process scan which caused changeover
+
         # Check for occupancy to ensure there exists clusters to process
         (lidar_clusters, _) = \
             self.__lidar_algs.clusterLidarScanAdv(self._fil_scans)
@@ -138,8 +216,10 @@ class FDSRoom(object):
                 activity = \
                     self.__lidar_algs.classifyLidarCluster(cluster_pts, center)
                 if (activity == 1):  # fall detected
-                    self._domain._roomEmitFallEvent(self._roomconfig.id)
+                    self.__domain._emitFallEvent(self.__config.id)
                     break
+
+            self.__checkPause()
 
             # Keep checking for occupancy
             (lidar_clusters, _) = \
@@ -156,22 +236,19 @@ class FDSRoom(object):
         This function controls state transitions for different classification
         modes.
         """
-        # function to run in its own thread for real-time processing
-        # room thread controls sensor thread
-        sensor_thread = threading.Thread(target=self._sensorThread)
+
+        # Construct synchronization primitizes
+        self.__pause_event = threading.Event()
+        self.__sensor_pull_lock = threading.Lock()
+
+        # Room thread controls sensor thread, not the pool
+        sensor_thread = threading.Thread(target=self.__thread_sensorScan,
+                                         name="FDS Sensor Data Pull Loop")
         self._sensor_sentinel = True
         sensor_thread.run()
 
-        # Initialize needed scikit objects for persistance
-        # TODO: remove this, migrate algorithms to algs.py
-        # self.__lidar_knn = KNeighborsClassifier(n_neighbors=6,
-        #                                        algorithm='ball_tree',
-        #                                        p=1)
-
-        # TODO: pass training data
-        # self.__lidar_knn = self.__lidar_knn.fit(training data, labels)
-        # Beginfall detection processing loop using low power classification
-        self._activity_state = FDSRoom.ActivityState.LOW
+        # Begin fall detection processing loop using low power classification
+        self._activity_state = self.ActivityState.LOW
         self.__classificationProcess = self.__classificationProcessLow
         # Run loop, classificationProcess method pointer is set in
         #  classification process
@@ -184,9 +261,9 @@ class FDSRoom(object):
                 raise err
 
         self._sensor_sentinel = False
-        sensor_thread.join(FDSRoom._SENSOR_THREAD_TIMEOUT_SEC)
+        sensor_thread.join(self.__SENSOR_THREAD_TIMEOUT_SEC)
         if (not self._sensor_sentinel):
             self._logger.debug("Sensor thread did not join promptly, exceeded "
                                "{0} seconds"
-                               .format(FDSRoom._SENSOR_THREAD_TIMEOUT))
+                               .format(self.__SENSOR_THREAD_TIMEOUT_SEC))
         return 0
