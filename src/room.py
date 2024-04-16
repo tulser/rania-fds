@@ -30,9 +30,10 @@ class FDSRoom(object):
         LOW = auto()
         HIGH = auto()
 
-    __SENSOR_THREAD_TIMEOUT_SEC = 2.0
-    __SCAN_MIN_WINDOW_SIZE = 5
-    __LOW_CLASSIFY_PERIOD_SEC = 0.7
+    __SENSOR_THREAD_TIMEOUT_SEC: float = 2.0
+    __PAUSE_TIMEOUT_SEC: float = 8.0
+    __SCAN_MIN_WINDOW_SIZE: int = 5
+    __LOW_CLASSIFY_PERIOD_SEC: float = 0.7
 
     def __init__(self, room_config: FDSRoomConfig, domain_owner: FDSDomain,
                  logger: logging.Logger):
@@ -66,6 +67,9 @@ class FDSRoom(object):
                                name="FDS Classification Thread")
         return
 
+    def __cond_pauseCheck(self):
+        return (self.__threads_to_pause is 0)
+
     def pauseThreads(self):
         """
         Pause threads in this room.
@@ -74,7 +78,19 @@ class FDSRoom(object):
         if self._activity_state is self.ActivityState.NONE:
             raise FDSException()
 
+        self.__threads_pausing = self.__threads_to_pause
         self.__pause_event.clear()
+        
+        if not self.__pause_all_cond.wait_for(self.__cond_pauseCheck,
+                                              timeout=self.__PAUSE_TIMEOUT_SEC):
+            self.__logger.warn(f"Pausing exceeded timeout of {0} seconds."
+                               .format(self.__PAUSE_TIMEOUT_SEC))
+        else:
+            self.__pause_all_cond.wait_for(self.__cond_pauseCheck,
+                                           timeout=None)
+
+        
+        self._activity_state = self.ActivityState.PAUSED
         return
 
     def resumeThreads(self):
@@ -98,8 +114,10 @@ class FDSRoom(object):
         """
 
         if not self.__pause_event.is_set():
+            with self.__pause_all_cond:
+                self.__threads_pausing -= 1
+            self.__pause_all_cond.notify(n=1)
             # Room transitions to PAUSED state, wait for unpause
-            self._activity_state = self.ActivityState.PAUSED
             self.__pause_event.wait(timeout=None)
             return True
         return False
@@ -112,6 +130,9 @@ class FDSRoom(object):
         scans for `__thread_classification` to consume.
         """
 
+        self.__threads_to_pause += 1
+
+        # Wait until the classification thread requests data
         self.__sensor_pull_event.wait(timeout=None)
         while self._sensor_sentinel:
             self.__sensor_pull_event.clear()
@@ -135,6 +156,8 @@ class FDSRoom(object):
         Get sensor scans and data asynchronously and continuously, spawned by
         `__thread_classification()`.
         """
+
+        self.__threads_to_pause += 1
 
         # Sensor scan thread controls pull thread
         sensor_pull_thread = threading.Thread(
@@ -200,7 +223,7 @@ class FDSRoom(object):
         # ...and start copying them.
         for i in range(0, len(self._lidar_sensors)):
             # Copy the lists backing the windows (the deques)
-            scan_window = list(self.__lidar_scan_windows[i]).copy()
+            scan_window = list(self.__lidar_scan_windows[i])
             sensor_windows.append(scan_window)
         # Let the sensorPull thread add scans from the alternate windows
         self.__sensor_pull_event.set()
@@ -309,6 +332,9 @@ class FDSRoom(object):
 
         # Construct synchronization primitizes
         self.__pause_event = threading.Event()
+        self.__pause_all_cond = threading.Condition()
+        self.__threads_to_pause = 1 # For condition, to check all threads pause
+        self.__threads_pausing = 0
         self.__sensor_ret_cond = True
         self.__sensor_pull_event = threading.Event()
 
