@@ -10,11 +10,11 @@ import numpy as np
 
 import sensor
 import algs
-from .domain import FDSDomain
-from .fdscommon import FDSRoomConfig, FDSException
+from .domain import Domain
+from .fdscommon import RoomConfig, FDSException
 
 
-class FDSRoom(object):
+class Room(object):
     """
     Class representing a room/spacial unit of an FDSDomain.
     """
@@ -35,7 +35,7 @@ class FDSRoom(object):
     __SCAN_MIN_WINDOW_SIZE: int = 5
     __LOW_CLASSIFY_PERIOD_SEC: float = 0.7
 
-    def __init__(self, room_config: FDSRoomConfig, domain_owner: FDSDomain,
+    def __init__(self, room_config: RoomConfig, domain_owner: Domain,
                  logger: logging.Logger):
         """
         :param room_config: A room specific configuration to use.
@@ -68,7 +68,7 @@ class FDSRoom(object):
         return
 
     def __cond_pauseCheck(self):
-        return (self.__threads_to_pause is 0)
+        return (self.__threads_to_pause == 0)
 
     def pauseThreads(self):
         """
@@ -80,7 +80,7 @@ class FDSRoom(object):
 
         self.__threads_pausing = self.__threads_to_pause
         self.__pause_event.clear()
-        
+
         if not self.__pause_all_cond.wait_for(self.__cond_pauseCheck,
                                               timeout=self.__PAUSE_TIMEOUT_SEC):
             self.__logger.warn(f"Pausing exceeded timeout of {0} seconds."
@@ -89,7 +89,6 @@ class FDSRoom(object):
             self.__pause_all_cond.wait_for(self.__cond_pauseCheck,
                                            timeout=None)
 
-        
         self._activity_state = self.ActivityState.PAUSED
         return
 
@@ -171,10 +170,10 @@ class FDSRoom(object):
         for lidar in self.__lidar_sensors:
             self.__lidar_scan_windows.append(deque(
                 iterable=[],
-                maxlen=FDSRoom._SCAN_MIN_WINDOW_SIZE))
+                maxlen=Room._SCAN_MIN_WINDOW_SIZE))
             self.__lidar_scan_windows_alt.append(deque(
                 iterable=[],
-                maxlen=FDSRoom._SCAN_MIN_WINDOW_SIZE))
+                maxlen=Room._SCAN_MIN_WINDOW_SIZE))
 
         # Start the sensors
         for lidar in self.__lidar_sensors:

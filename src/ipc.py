@@ -9,7 +9,7 @@ import json
 import zmq
 
 
-class FDSEvent(object):
+class EventInfo(object):
     """
     Abstract class for events emitted by the fall detection system.
     """
@@ -24,7 +24,7 @@ class FDSEvent(object):
         raise NotImplementedError
 
 
-class FDSFallEvent(FDSEvent):
+class FallEventInfo(EventInfo):
     def __init__(self, domain_id, room_id):
         super().__init__(domain_id)
         self._room_id = room_id
@@ -36,7 +36,7 @@ class FDSFallEvent(FDSEvent):
         return
 
 
-class FDSSocket(object):
+class Socket(object):
     """
     Class for managing connectiosn from the FDS to potentially multiple
     sources.
@@ -80,7 +80,7 @@ class FDSSocket(object):
         return
 
     def _startPublisher(self):
-        self.__pub_socket.bind("ipc://" + self.__socket_path_pub);
+        self.__pub_socket.bind("ipc://" + self.__socket_path_pub)
         return
 
     def __thread_cmdlistener(self):
@@ -89,8 +89,7 @@ class FDSSocket(object):
 
             self.__cmd_socket.send(something)
 
-
-    def emitEvent(self, event: FDSEvent):
+    def emitEvent(self, event: EventInfo):
         jdump = json.dumps(event.dict)
         self.__pub_socket.send(bytes(jdump, encoding="utf-8"))
         return

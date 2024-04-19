@@ -1,23 +1,23 @@
-from typing import Optional, Callable, Iterable, Any
+from typing import Optional, Callable, Any
 
 import logging
 import threading
 
-from .fdscommon import FDSDomainConfig
-from .room import FDSRoom
-from .ipc import FDSSocket, FDSFallEvent
+from .fdscommon import DomainConfig
+from .room import Room
+from .ipc import Socket, FallEventInfo
 # FUTURE: Plot should eventually be removed with routines merged into FDSSocket
 #   or other status communicator to send plots over a socket
 from .plot import Plotter
 
 
-class FDSDomain(object):
+class Domain(object):
     """
     Class to represent a physical, generic domain such as a house or other
     dwelling. A fall detection system (FDS) is an instance of the class.
     """
 
-    def __init__(self, domain_config: FDSDomainConfig, socket: FDSSocket,
+    def __init__(self, domain_config: DomainConfig, socket: Socket,
                  logger: logging.Logger):
         """
         :param domain_config: A room specific configuration to use.
@@ -51,7 +51,7 @@ class FDSDomain(object):
 
         room_configs = self.__dom_config.room_configs
         for room_config in room_configs:
-            self._rooms.append(FDSRoom(room_config, self, self.__logger))
+            self._rooms.append(Room(room_config, self, self.__logger))
         return
 
     def __threadWrapper(self, func: Callable[..., Any]):
@@ -128,7 +128,7 @@ class FDSDomain(object):
         Emit a fall event from this instance.
         """
 
-        fe = FDSFallEvent(self.__config.id, room_id)
+        fe = FallEventInfo(self.__config.id, room_id)
         self.__socket.emitEvent(fe)
         return
 

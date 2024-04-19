@@ -6,13 +6,13 @@ import logging
 import io
 import sys
 
-from .fdscommon import FDSGlobalConfig, FDSDomainConfig, FDSRoomConfig
-from .domain import FDSDomain
+from .fdscommon import GlobalConfig, DomainConfig, RoomConfig
+from .domain import Domain
 import comm
 from .sensor import getSensors
 
 
-class FDSLogLevel(Enum):
+class LogLevel(Enum):
     DEBUG = logging.DEBUG
     INFO = logging.INFO
     WARNING = logging.WARNING
@@ -20,7 +20,7 @@ class FDSLogLevel(Enum):
     CRITICAL = logging.CRITICAL
 
 
-class FDSLogFilter(logging.Filter):
+class LogFilter(logging.Filter):
     """
     Class for custom filtering behavior on Logger objects.
     """
@@ -38,7 +38,7 @@ class FDSLogFilter(logging.Filter):
 # DEFAULT_CONFIG_PATH_POSIX = "/etc/rania-fds/fds.conf"
 
 
-def _getDefaultFDSConfig() -> FDSGlobalConfig:
+def _getDefaultFDSConfig() -> GlobalConfig:
     """
     Get the base configuration for the FDS.
 
@@ -46,21 +46,21 @@ def _getDefaultFDSConfig() -> FDSGlobalConfig:
     :rtype: FDSGlobalConfig
     """
 
-    gc = FDSGlobalConfig()
+    gc = GlobalConfig()
     gc.socket_path = f"./fds{0}".format(0)
-    gc.dom_config = FDSDomainConfig()
+    gc.dom_config = DomainConfig()
     # TODO: add more
     return gc
 
 
 def _getFDSConfig(config_path: Optional[str], logger: logging.Logger
-                  ) -> FDSGlobalConfig:
+                  ) -> GlobalConfig:
     """
     Get the user-defined configuration for the FDS and apply it over the
     default configuration.
 
     :param config_path: A filesystem path to the file containing the system
-        configuration, `None` to get the default configuration.
+        configuration, `None` to get the default config.
     :type config_path: Optional[str]
     :param logger: Logger to use for logging.
     :type logger: Logger
@@ -94,10 +94,10 @@ def _getFDSConfig(config_path: Optional[str], logger: logging.Logger
             # TODO: Parse fds config
             # NOTE: For this implementation, we assume there is one domain that
             #       is equivalent to the FDS, i.e, a domain represents an FDS
-            return FDSGlobalConfig()
+            return GlobalConfig()
 
 
-def startFDS(fds_config: FDSGlobalConfig, logger: logging.Logger):
+def start(fds_config: GlobalConfig, logger: logging.Logger):
     """
     Start the fall detection system using the provided configuration.
 
@@ -111,13 +111,13 @@ def startFDS(fds_config: FDSGlobalConfig, logger: logging.Logger):
     socket_master = comm.FDSSocket(fds_config.sock_path, logger)
     sensors = getSensors(fds_config.sensors)
 
-    domain = FDSDomain(fds_config.dom_config, socket_master, logger)
+    domain = Domain(fds_config.dom_config, socket_master, logger)
     domain.start()
     return
 
 
 def main(config_path: Optional[str] = None,
-         loglevel: FDSLogLevel = FDSLogLevel.INFO):
+         loglevel: LogLevel = LogLevel.INFO):
     """
     True entry point for the fall detection system program.
     The configuration for the program is deserialized, parsed, and then used to
@@ -131,11 +131,11 @@ def main(config_path: Optional[str] = None,
     """
 
     logger = logging.Logger("fds", loglevel)
-    logger.addFilter(FDSLogFilter())
+    logger.addFilter(LogFilter())
 
     fds_config = _getFDSConfig(config_path, logger)
 
-    startFDS(fds_config, logger)
+    start(fds_config, logger)
     return
 
 
