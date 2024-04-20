@@ -242,33 +242,35 @@ class Room(object):
 
         self._activity_state = self.ActivityState.LOW
 
+        time_tosleep = time.monotonic()
+
         # Check for occupancy
         lidar_windows = self.__pullLidarData()
-        # FIXME: Process with arbitrary sensors
+        # FUTURE: Process with arbitrary sensors
         lidar_window = lidar_windows[0]
         lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
 
         (lidar_clusters, _) = \
             self.__lidar_algs.clusterLidarScan(lidar_window_fil)
 
-        time_tosleep = time.monotonic()
         while (len(lidar_clusters) == 0):
-            sensor_windows = self.__pullLidarData()
-            # FIXME: Process with arbitrary sensors
-            lidar_window = sensor_windows[0]
+            # self.__domain._pushData(0, )
+
+            # Checkpoint for pausing
+            if not self.__checkPause():
+                time_tosleep = self.__LOW_CLASSIFY_PERIOD_SEC - \
+                    (time.monotonic() - time_tosleep)
+                time.sleep(time_tosleep)
+
+            time_tosleep = time.monotonic()
+
+            lidar_windows = self.__pullLidarData()
+            # FUTURE: Process with arbitrary sensors
+            lidar_window = lidar_windows[0]
             lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
 
             (lidar_clusters, _) = \
                 self.__lidar_algs.clusterLidarScan(lidar_window_fil)
-
-            time_tosleep = self.__LOW_CLASSIFY_PERIOD_SEC - \
-                (time.monotonic() - time_tosleep)
-            time.sleep(time_tosleep)
-
-            # Checkpoint for pausing
-            self.__checkPause()
-
-            time_tosleep = time.monotonic()
 
         # Set the next state/function to transition to.
         self.__classificationProcess = self.__classificationProcessHigh
@@ -304,6 +306,8 @@ class Room(object):
                 if (activity == 1):  # fall detected
                     self.__domain._emitFallEvent(self.__config.id)
                     break
+
+            # self.__domain._pushData(0, )
 
             # Checkpoint for pausing
             self.__checkPause()

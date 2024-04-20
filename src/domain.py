@@ -1,14 +1,16 @@
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, List
 
 import logging
 import threading
+
+import numpy as np
 
 from .fdscommon import DomainConfig
 from .room import Room
 from .ipc import Socket, FallEventInfo
 # FUTURE: Plot should eventually be removed with routines merged into FDSSocket
 #   or other status communicator to send plots over a socket
-from .plot import Plotter
+from .plot import LidarPlotter
 
 
 class Domain(object):
@@ -36,7 +38,7 @@ class Domain(object):
         self.__threads_condexit = threading.Condition()
         self.__threads_toexit = 0
 
-        self.__plotter = Plotter()
+        self.__plotter = LidarPlotter()
 
         self.addThread(self.__plotter.__thread_plotLoop,
                        name="FDS Plot Loop")
@@ -133,6 +135,11 @@ class Domain(object):
         return
 
     # FUTURE: Remake this to push data over the socket, rather than plot
-    def _pushData(self, ):
-        # TODO: Implement
-        pass
+    def _pushData(self, room_id: int, geometry: np.ndarray, noise: np.ndarray,
+                  clusters: List[np.ndarray]):
+        """
+        Push clusters of samples to clients
+        """
+
+        self.__plotter.drawPlot(geometry, noise, clusters)
+        return
