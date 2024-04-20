@@ -248,13 +248,13 @@ class Room(object):
         lidar_windows = self.__pullLidarData()
         # FUTURE: Process with arbitrary sensors
         lidar_window = lidar_windows[0]
-        lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
+        (unculled, culled) = self.__lidar_sensors[0].filterData(lidar_window)
 
-        (lidar_clusters, _) = \
-            self.__lidar_algs.clusterLidarScan(lidar_window_fil)
+        (lidar_clusters, noise) = \
+            self.__lidar_algs.clusterLidarScan(unculled)
 
         while (len(lidar_clusters) == 0):
-            # self.__domain._pushData(0, )
+            self.__domain._pushData(0, culled, noise, lidar_clusters)
 
             # Checkpoint for pausing
             if not self.__checkPause():
@@ -267,10 +267,11 @@ class Room(object):
             lidar_windows = self.__pullLidarData()
             # FUTURE: Process with arbitrary sensors
             lidar_window = lidar_windows[0]
-            lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
+            (unculled, culled) = self.__lidar_sensors[0] \
+                .filterData(lidar_window)
 
-            (lidar_clusters, _) = \
-                self.__lidar_algs.clusterLidarScan(lidar_window_fil)
+            (lidar_clusters, noise) = \
+                self.__lidar_algs.clusterLidarScan(unculled)
 
         # Set the next state/function to transition to.
         self.__classificationProcess = self.__classificationProcessHigh
@@ -290,10 +291,10 @@ class Room(object):
         lidar_windows = self.__pullLidarData()
         # FIXME: Process with arbitrary sensors
         lidar_window = lidar_windows[0]
-        lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
+        (unculled, culled) = self.__lidar_sensors[0].filterData(lidar_window)
 
-        (lidar_clusters, _) = \
-            self.__lidar_algs.clusterLidarScanAdv(lidar_window_fil)
+        (lidar_clusters, noise) = \
+            self.__lidar_algs.clusterLidarScanAdv(unculled)
 
         while (len(lidar_clusters) != 0):
             # Process each cluster
@@ -307,7 +308,7 @@ class Room(object):
                     self.__domain._emitFallEvent(self.__config.id)
                     break
 
-            # self.__domain._pushData(0, )
+            self.__domain._pushData(0, culled, noise, lidar_clusters)
 
             # Checkpoint for pausing
             self.__checkPause()
@@ -315,11 +316,12 @@ class Room(object):
             lidar_windows = self.__pullLidarData()
             # FIXME: Process with arbitrary sensors
             lidar_window = lidar_windows[0]
-            lidar_window_fil = self.__lidar_sensors[0].filterData(lidar_window)
+            (unculled, culled) = self.__lidar_sensors[0] \
+                .filterData(lidar_window)
 
             # Keep checking for occupancy
-            (lidar_clusters, _) = \
-                self.__lidar_algs.clusterLidarScanAdv(lidar_window_fil)
+            (lidar_clusters, noise) = \
+                self.__lidar_algs.clusterLidarScanAdv(unculled)
 
         # Set the next state/function to transition to.
         self.__classificationProcess = self.__classificationProcessHigh
@@ -336,7 +338,7 @@ class Room(object):
         # Construct synchronization primitizes
         self.__pause_event = threading.Event()
         self.__pause_all_cond = threading.Condition()
-        self.__threads_to_pause = 1 # For condition, to check all threads pause
+        self.__threads_to_pause = 1  # For condition, to check threads pause
         self.__threads_pausing = 0
         self.__sensor_ret_cond = True
         self.__sensor_pull_event = threading.Event()

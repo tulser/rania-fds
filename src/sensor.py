@@ -1,4 +1,4 @@
-from typing import override, List, Iterable
+from typing import override, List, Tuple
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum, auto
@@ -9,7 +9,6 @@ import numpy as np
 import rplidar
 
 
-@dataclass
 class SensorCalibration:
     """
     Calibration dataclass for representing
@@ -17,14 +16,60 @@ class SensorCalibration:
     pass
 
 
-@dataclass
 class LidarCalibration(SensorCalibration):
-    bounds: np.ndarray[float, float]
+
+    def filterFunc(self, points: np.ndarray):
+        raise NotImplementedError
 
 
-@dataclass
 class RPLidarCalibration(LidarCalibration):
     pass
+
+
+class BoundsFiltering(RPLidarCalibration):
+
+    def __init__(self, arcsec_bounds: np.ndarray):
+        """
+        :param bounds: Array of shape (n, 2), where the second dimension is
+            structured in the format (a, b) where `a` is the end of the
+            arc-interval, in units of degrees, and `b` is the distance bound
+            for the interval.
+            Arc-interval in the passed array is assumed to increase.
+        :type bounds: np.ndarray
+        """
+
+        self._bounds = arcsec_bounds
+        return
+
+    @override
+    def filterFunc(self, points: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        :param points: An array of polar points of shape (n, 2), where the
+            second dimension is structured in the format (deg, dist) where
+            `deg` is the angle, in units of degrees, and `dist` is the distance
+            of a point.
+            Points are assumed to be listed in increasing angle.
+        :type points: np.ndarray
+        """
+
+        bounds = self._bounds
+        unculled_list = []
+        culled_list = []
+
+        i = 0
+        for p in points:
+            # Go to next interval if the next point(s) exceed the arc
+            if p[0] > bounds[i][0]:
+                i += 1
+            # For the selected interval, cull points if they are over the bound
+            if p[1] > bounds[i][1]:
+                culled_list.append(p)
+            else:
+                unculled_list.append(p)
+
+        unculled = np.array(unculled_list)
+        culled = np.array(culled_list)
+        return (unculled, culled)
 
 
 @dataclass
@@ -34,7 +79,8 @@ class SensorInfo:
     the program.
     """
 
-    location: str  # identifier for a sensor, should be persistent
+    uid: int  # Unique, numeric identifier for the sensor
+    location: str  # Resource identifier, should be persistent, unique
     classtype: int
     devicetype: int
     calibration: SensorCalibration
@@ -83,7 +129,7 @@ class Lidar(Sensor):
         return SensorClassType.LIDAR
 
     @abstractmethod
-    def getRawData(self) -> np.ndarray:
+    def getRawSamples(self) -> np.ndarray:
         """
         Get a scan from the sensor.
 
@@ -97,15 +143,17 @@ class Lidar(Sensor):
         raise NotImplementedError
 
     @abstractmethod
-    def filterData(self, data: Iterable[np.ndarray]) -> List[np.ndarray]:
+    def filterSamples(self, samples: np.ndarray
+                      ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get filtered data using the set calibration scheme for
         processing the input, raw scan data.
 
         :param data: A list of scans to process.
-        :type data: Iterable[np.ndarray]
-        :return: A list of scans with filtered/culled samples.
-        :rtype: List[np.ndarray]
+        :type data: np.ndarray
+        :return: A tuple with unculled and filtered/culled samples,
+            respectively.
+        :rtype: Tuple[np.ndarray, np.ndarray]
         """
 
         raise NotImplementedError
@@ -149,16 +197,15 @@ class RPLidar(Lidar, rplidar.RPLidar):
         return self.__calibration
 
     @override
-    def getRawData(self) -> np.ndarray:
+    def getRawSamples(self) -> np.ndarray:
         scan = next(self.__iterator)
         scan_fv = [(deg, dist) for _, deg, dist in scan]
         return np.array(scan_fv)
 
     @override
-    def filterData(self, data: List[np.ndarray]) -> List[np.ndarray]:
-
-        # TODO: Implement filtering
-        return data
+    def filterSamples(self, samples: np.ndarray
+                      ) -> Tuple[np.ndarray, np.ndarray]:
+        return self.__calibration.filterFunc(samples)
 
     @override
     def startScanning(self):
@@ -200,7 +247,9 @@ def getSensors(sensors_info: List[SensorInfo], logger: logging.Logger
     :return: A list of Sensors
     :rtype: List[Sensor]
     """
+
     global _g_sensor_type_class_map
+
     sensors_list = []
     for si in sensors_info:
         try:
