@@ -8,8 +8,8 @@ import time
 
 import numpy as np
 
-import sensor
-import algs
+from .sensor import Sensor, RPLidar
+from .algs import LidarAlgSet
 from .domain import Domain
 from .fdscommon import RoomConfig, FDSException
 
@@ -35,7 +35,10 @@ class Room(object):
     __SCAN_MIN_WINDOW_SIZE: int = 5
     __LOW_CLASSIFY_PERIOD_SEC: float = 0.7
 
-    def __init__(self, room_config: RoomConfig, domain_owner: Domain,
+    def __init__(self, room_config: RoomConfig,
+                 domain_owner: Domain,
+                 lidar_alg_set: LidarAlgSet,
+                 sensors: List[Sensor],
                  logger: logging.Logger):
         """
         :param room_config: A room specific configuration to use.
@@ -49,18 +52,18 @@ class Room(object):
         self.__config = room_config
         self.__domain = domain_owner
         self.__logger = logger
-        self.__scans = np.ndarray(self._WINDOW_SIZE)
-        self.__sensors = sensor.getRoomSensors(room_config, logger)
+
+        self.__sensors = sensors
         self.__lidar_sensors = []
-        self.__lidar_calibration = []
-        for s in self._sensors:
-            if isinstance(s, sensor.RPLidar):
-                self.__lidar_sensors.append(s)
+        for sensor in sensors:
+            if isinstance(sensor, RPLidar):
+                self.__lidar_sensors.append(sensor)
 
         # Initialize algorithms with parameters
         # TODO: Need complete parameter set
-        self.__lidar_algs = algs.LidarAlgSet(dbs_eps=0.5,
-                                             dbs_min_samples=6)
+        self.__lidar_alg_set = lidar_alg_set
+
+        self.__scans = np.ndarray(self._SCAN_MIN_WINDOW_SIZE)
 
         # Execution control over the room is managed by the owning domain
         domain_owner.addThread(target=self.__thread_classification,
@@ -239,19 +242,21 @@ class Room(object):
         number of points, before switching to the HIGH activity state and
         exiting.
         """
+        # FUTURE: Process with arbitrary sensors
 
         self._activity_state = self.ActivityState.LOW
+
+        lidar_alg_set = self.__lidar_alg_set
 
         time_tosleep = time.monotonic()
 
         # Check for occupancy
         lidar_windows = self.__pullLidarData()
-        # FUTURE: Process with arbitrary sensors
         lidar_window = lidar_windows[0]
         (unculled, culled) = self.__lidar_sensors[0].filterData(lidar_window)
 
         (lidar_clusters, noise) = \
-            self.__lidar_algs.clusterLidarScan(unculled)
+            lidar_alg_set.clusterLidarScan(unculled)
 
         while (len(lidar_clusters) == 0):
             self.__domain._pushData(0, culled, noise, lidar_clusters)
@@ -271,7 +276,7 @@ class Room(object):
                 .filterData(lidar_window)
 
             (lidar_clusters, noise) = \
-                self.__lidar_algs.clusterLidarScan(unculled)
+                lidar_alg_set.clusterLidarScan(unculled)
 
         # Set the next state/function to transition to.
         self.__classificationProcess = self.__classificationProcessHigh
@@ -282,19 +287,21 @@ class Room(object):
         Use a higher power/intensity classification algorithm in the HIGH
         activity state to find falls in a room with continued activity.
         """
+        # FUTURE: Process with arbitrary sensors
 
         self._activity_state = self.ActivityState.HIGH
+
+        lidar_alg_set = self.__lidar_alg_set
 
         # TODO: Run KNN here to process scan which caused changeover
 
         # Check for occupancy to ensure there exists clusters to process
         lidar_windows = self.__pullLidarData()
-        # FIXME: Process with arbitrary sensors
         lidar_window = lidar_windows[0]
         (unculled, culled) = self.__lidar_sensors[0].filterData(lidar_window)
 
         (lidar_clusters, noise) = \
-            self.__lidar_algs.clusterLidarScanAdv(unculled)
+            lidar_alg_set.clusterLidarScanAdv(unculled)
 
         while (len(lidar_clusters) != 0):
             # Process each cluster
@@ -303,7 +310,7 @@ class Room(object):
                 cluster_pts = cluster[0]
                 center = cluster[1]
                 activity = \
-                    self.__lidar_algs.classifyLidarCluster(cluster_pts, center)
+                    lidar_alg_set.classifyLidarCluster(cluster_pts, center)
                 if (activity == 1):  # fall detected
                     self.__domain._emitFallEvent(self.__config.id)
                     break
@@ -321,7 +328,7 @@ class Room(object):
 
             # Keep checking for occupancy
             (lidar_clusters, noise) = \
-                self.__lidar_algs.clusterLidarScanAdv(unculled)
+                lidar_alg_set.clusterLidarScanAdv(unculled)
 
         # Set the next state/function to transition to.
         self.__classificationProcess = self.__classificationProcessHigh

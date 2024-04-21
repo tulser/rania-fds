@@ -6,6 +6,8 @@ import threading
 import numpy as np
 
 from .fdscommon import DomainConfig
+from .sensor import Sensor
+from .algs import GlobalTrainingSets, LidarAlgSet
 from .room import Room
 from .ipc import Socket, FallEventInfo
 # FUTURE: Plot should eventually be removed with routines merged into FDSSocket
@@ -19,7 +21,10 @@ class Domain(object):
     dwelling. A fall detection system (FDS) is an instance of the class.
     """
 
-    def __init__(self, domain_config: DomainConfig, socket: Socket,
+    def __init__(self, domain_config: DomainConfig,
+                 training: GlobalTrainingSets,
+                 sensors: List[Sensor],
+                 socket: Socket,
                  logger: logging.Logger):
         """
         :param domain_config: A room specific configuration to use.
@@ -31,6 +36,7 @@ class Domain(object):
         """
 
         self.__config = domain_config
+        self.__lidar_alg_set = LidarAlgSet(trainingset=training)
         self.__socket = socket
         self.__logger = logger
         self.__rooms = []
@@ -42,18 +48,24 @@ class Domain(object):
 
         self.addThread(self.__plotter.__thread_plotLoop,
                        name="FDS Plot Loop")
-        self.__initalizeRooms()
+        self.__initalizeRooms(sensors)
         return
 
-    def __initalizeRooms(self):
+    def __initalizeRooms(self, sensors: List[Sensor]):
         """
         Initialize all rooms with given information from the domain
         configuration.
         """
 
         room_configs = self.__dom_config.room_configs
+        logger = self.__logger
+        lidar_alg_set = self.__lidar_alg_set
         for room_config in room_configs:
-            self._rooms.append(Room(room_config, self, self.__logger))
+            priv_sensors = []
+            for uid in room_config.sensors_assigned:
+                priv_sensors.append(sensors[uid])
+            self._rooms.append(Room(room_config, self, lidar_alg_set,
+                                    priv_sensors, logger))
         return
 
     def __threadWrapper(self, func: Callable[..., Any]):

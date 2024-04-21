@@ -9,10 +9,21 @@ import numpy as np
 import rplidar
 
 
-class SensorCalibration:
+@dataclass
+class CalibrationData:
+    pass
+
+
+@dataclass
+class BoundsCalibrationData(CalibrationData):
+    arcsec_bounds: np.ndarray
+
+
+class SensorCalibration(object):
     """
-    Calibration dataclass for representing
+    Base calibration class
     """
+
     pass
 
 
@@ -80,10 +91,11 @@ class SensorInfo:
     """
 
     uid: int  # Unique, numeric identifier for the sensor
-    location: str  # Resource identifier, should be persistent, unique
+    path: str  # Resource identifier, should be persistent, unique
     classtype: int
     devicetype: int
-    calibration: SensorCalibration
+    calibration_type: int
+    calibration_path: str
 
 
 class SensorClassType(IntEnum):
@@ -221,7 +233,7 @@ class RPLidar(Lidar, rplidar.RPLidar):
         self.__rpsup.stop()
 
 
-_g_sensor_type_class_map: dict = {
+SENSOR_TYPE_CLASS_MAP: dict = {
     SensorClassType.LIDAR: {
         LidarDeviceType.RPLIDAR: RPLidar
     }
@@ -248,13 +260,13 @@ def getSensors(sensors_info: List[SensorInfo], logger: logging.Logger
     :rtype: List[Sensor]
     """
 
-    global _g_sensor_type_class_map
+    global SENSOR_TYPE_CLASS_MAP
 
     sensors_list = []
     for si in sensors_info:
         try:
             # Get the corresponding class from the map to construct
-            cls: Sensor = _g_sensor_type_class_map[si.classtype][si.devicetype]
+            cls: Sensor = SENSOR_TYPE_CLASS_MAP[si.classtype][si.devicetype]
             sensor = cls(si.location, si.calibration, logger=logger)
             sensors_list.append(sensor)
         except KeyError:

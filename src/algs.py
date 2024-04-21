@@ -1,5 +1,6 @@
 from typing import List, Tuple
 from enum import Enum, auto
+from dataclasses import dataclass
 
 import math
 
@@ -9,29 +10,36 @@ from sklearn.neighbors import KNeighborsClassifier
 import numpy as np
 import scipy.ndimage as sp_nd
 
-import util
+from .util import convertPolarCartesian
+
+
+@dataclass
+class GlobalTrainingSets:
+    clsf_lidar_knn_nkp: int
+    clsf_lidar_knn_set: Tuple[np.ndarray, np.ndarray]
 
 
 class LidarAlgSet(object):
 
-    def __init__(self, clsf_knn_traindata: np.ndarray,
+    def __init__(self, trainingset: GlobalTrainingSets,
                  dbs_eps: float = 0.5,
                  dbs_min_samples: int = 6,
-                 clsf_knn_neighbors: int = 6,
-                 clsf_key_points_n: int = 16):
+                 clsf_knn_neighbors: int = 6):
+
         self.__dbs = DBSCAN(eps=dbs_eps, min_samples=dbs_min_samples)
         self.__ss = StandardScaler()
+
         self.__knn_clsf = KNeighborsClassifier(n_neighbors=clsf_knn_neighbors,
                                                algorithm='ball_tree',
                                                p=1)
+        clsf_knn_traindata = trainingset.clsf_lidar_knn_set
         knn_data = clsf_knn_traindata[0]
         knn_labels = clsf_knn_traindata[1]
         self.__knn_clsf.fit(knn_data, knn_labels)
 
-        self._clsf_key_points_n = clsf_key_points_n
-        # preallocate array for key points
+        self._clsf_key_points_n = trainingset.clsf_lidar_knn_nkp
+        # preallocate array to hold key points
         self.__keypoints = np.empty(self._clsf_key_points, dtype=float)
-
         return
 
     class ActivityClass(Enum):
@@ -65,7 +73,8 @@ class LidarAlgSet(object):
         pts_sec_len = pts_deg_span / self._clsf_key_points_n
         start_idx = 0
         end_idx = 0
-        for i in range(0, len(self.__keypoints) - 1):
+        keypoints = self.__keypoints
+        for i in range(0, len(keypoints) - 1):
             pts_sec_end = math.floor((i + 1) * pts_sec_len)
             # Get an interval
             for j in range(start_idx, len(pts_tf)):
@@ -73,15 +82,15 @@ class LidarAlgSet(object):
                     end_idx = j
             pts_sec = pts_tf[start_idx:end_idx]
             # Get the mean distance for the keypoint
-            self.__keypoints[i] = sp_nd.mean(pts_sec[:, 1])
+            keypoints[i] = sp_nd.mean(pts_sec[:, 1])
             start_idx = end_idx
         # For final keypoint, just use all remaining points
         pts_sec = pts_tf[start_idx:len(pts_tf)]
         # Get the mean distance for the keypoint
-        self.__keypoints[i] = sp_nd.mean(pts_sec[:, 1])
+        keypoints[i] = sp_nd.mean(pts_sec[:, 1])
 
         # * Pass keypoints as data point to KNeighborsClassifier
-        label = self.__knn_clsf.predict(self.__keypoints)
+        label = self.__knn_clsf.predict(keypoints)
 
         return label
 
@@ -98,7 +107,7 @@ class LidarAlgSet(object):
         """
 
         # Process points into cartesian coordinates
-        fil_cart_scan = util.convertPolarCartesian(pts[0])
+        fil_cart_scan = convertPolarCartesian(pts)
 
         # Get labels
         fil_cart_scan_norm = self.__ss.fit_transform(fil_cart_scan)
@@ -117,11 +126,11 @@ class LidarAlgSet(object):
         #  numpy to create the array of empty lists appropriately.
         clusters = \
             np.frompyfunc(list, 0, 1)(np.empty(max_label + 1, dtype=object))
-        for i in range(0, len(pts[0])):
+        for i in range(0, len(pts)):
             if (labels[i] != -1):
-                clusters[labels[i]].append(pts[0][i])
+                clusters[labels[i]].append(pts[i])
             else:
-                unclustered.append(pts[0][i])
+                unclustered.append(pts[i])
 
         clusters_list = []
         for cluster in clusters:
@@ -143,7 +152,7 @@ class LidarAlgSet(object):
         """
 
         # Process points into cartesian coordinates
-        fil_cart_scan = util.convertPolarCartesian(pts[0])
+        fil_cart_scan = convertPolarCartesian(pts)
 
         # Get labels
         fil_cart_scan_norm = self.__ss.fit_transform(fil_cart_scan)
@@ -163,12 +172,12 @@ class LidarAlgSet(object):
         clusters = \
             np.frompyfunc(list, 0, 1)(np.empty(max_label + 1, dtype=object))
         clusters_cart = np.empty_like(clusters)
-        for i in range(0, len(pts[0])):
+        for i in range(0, len(pts)):
             if (labels[i] != -1):
-                clusters[labels[i]].append(pts[0][i])
+                clusters[labels[i]].append(pts[i])
                 clusters_cart[labels[i]].append(fil_cart_scan[i])
             else:
-                unclustered.append(pts[0][i])
+                unclustered.append(pts[i])
 
         clusters_cart_np = np.empty_like(clusters)
         for i in range(0, len(clusters)):

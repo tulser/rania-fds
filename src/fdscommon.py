@@ -1,7 +1,5 @@
-from typing import List, Tuple
+from typing import List
 from dataclasses import dataclass
-
-import numpy as np
 
 from .sensor import SensorInfo
 
@@ -14,22 +12,19 @@ class FDSException(Exception):
 
 
 @dataclass
-class FDSRoomConfig:
-    sensors_asid: List[str]
+class RoomConfig:
+    uid: int
+    sensors_assigned: List[int]
 
 
 @dataclass
-class FDSDomainConfig:
-    room_configs: List[FDSRoomConfig]
+class DomainConfig:
+    uid: int
+    room_configs: List[RoomConfig]
 
 
 @dataclass
-class FDSGlobalConfig:
-    socket_path: str
+class GlobalConfig:
+    socket_dir: str
     sensors: List[SensorInfo]
-    dom_config: FDSDomainConfig
-
-
-@dataclass
-class FDSGlobalTrainingSet:
-    lidar_training: Tuple[np.ndarray, np.ndarray]
+    dom_configs: List[DomainConfig]

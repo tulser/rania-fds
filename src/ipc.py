@@ -42,30 +42,31 @@ class Socket(object):
     sources.
     """
 
-    def __init__(self, socket_path: str, logger: logging.Logger):
+    __SOCKET_PREFIX = "fds"
+
+    def __init__(self, socket_dir: str, logger: logging.Logger):
         socket_path_rep = None
         socket_path_pub = None
         try:
-            socket_path_rep = realpath(socket_path + "-rep")
-            socket_path_pub = realpath(socket_path + "-pub")
+            socket_path_rep = \
+                realpath(socket_dir + self.__SOCKET_PREFIX + "-rep")
+            socket_path_pub = \
+                realpath(socket_dir + self.__SOCKET_PREFIX + "-pub")
         except Exception as err:
             raise err
 
         zmq_ctxt = zmq.Context()
-        self.__socket_path = socket_path
+        self.__socket_paths = (socket_path_rep, socket_path_pub)
         self.__cmd_socket = zmq_ctxt.socket(zmq.REP)
         self.__pub_socket = zmq_ctxt.socket(zmq.PUB)
         self.__zmq_ctxt = zmq_ctxt
 
-        self.__socket_path_rep = socket_path_rep
-        self.__socket_path_pub = socket_path_pub
-
-        self._listener_thread = Thread(target=self.__thread_cmdlistener,
-                                       name="FDS Socket Command Listener")
+        self.__listener_thread = Thread(target=self.__thread_cmdlistener,
+                                        name="FDS Socket Command Listener")
 
         self._sockets_bound = False
 
-        self._logger = logger
+        self.__logger = logger
         return
 
     def bindBegin(self):
@@ -75,12 +76,12 @@ class Socket(object):
         return
 
     def _startListener(self):
-        self.__cmd_socket.bind("ipc://" + self.__socket_path_rep)
+        self.__cmd_socket.bind("ipc://" + self.__socket_paths[0])
         self.__listener_thread.run()
         return
 
     def _startPublisher(self):
-        self.__pub_socket.bind("ipc://" + self.__socket_path_pub)
+        self.__pub_socket.bind("ipc://" + self.__socket_paths[1])
         return
 
     def __thread_cmdlistener(self):
