@@ -1,4 +1,4 @@
-from typing import override, List, Tuple
+from typing import override, List, Tuple, Dict
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum, auto
@@ -7,6 +7,8 @@ import logging
 
 import numpy as np
 import rplidar
+
+from .serialization import getCalibration
 
 
 @dataclass
@@ -39,7 +41,7 @@ class RPLidarCalibration(LidarCalibration):
 
 class BoundsFiltering(RPLidarCalibration):
 
-    def __init__(self, arcsec_bounds: np.ndarray):
+    def __init__(self, data: BoundsCalibrationData):
         """
         :param bounds: Array of shape (n, 2), where the second dimension is
             structured in the format (a, b) where `a` is the end of the
@@ -49,7 +51,7 @@ class BoundsFiltering(RPLidarCalibration):
         :type bounds: np.ndarray
         """
 
-        self._bounds = arcsec_bounds
+        self._bounds = data.arcsec_bounds
         return
 
     @override
@@ -123,11 +125,6 @@ class Sensor(object):
     def devicetype(cls) -> int:
         raise NotImplementedError
 
-    @property
-    @abstractmethod
-    def calibration(self) -> SensorCalibration:
-        raise NotImplementedError
-
 
 class Lidar(Sensor):
     """
@@ -179,22 +176,42 @@ class Lidar(Sensor):
         raise NotImplementedError
 
 
-# TODO: Consider moving or adding driver/dependency code into this class
+class FDSCalibrationSupportError:
+    pass
+
+
+# FUTURE: Consider moving or adding driver/dependency code into this class
 class RPLidar(Lidar, rplidar.RPLidar):
     """
     Implementation for RPLidar LiDAR devices.
     """
 
     _MIN_SCAN_LEN_DEFAULT = 5
+    CALIBRATIONS_SUPPORT_MAP = {
+        BoundsCalibrationData: BoundsFiltering
+    }
 
-    def __init__(self, port: str, calibration: RPLidarCalibration,
+    def __init__(self, sensor_info: SensorInfo,
+                 calibration_data: CalibrationData,
                  baudrate: int = 115200, timeout: int = 1,
                  min_scan_len: int = 5,
                  logger: logging.Logger = None):
         self.__rpsup = super(rplidar.RPLidar, self)  # alias for RPL superclass
-        self.__rpsup.__init__(self, port, baudrate, timeout, logger)
+        self.__rpsup.__init__(self, sensor_info.path, baudrate, timeout,
+                              logger)
         self.__min_scan_len = min_scan_len
-        self.__calibration = calibration
+
+        # Get corresponding class for instantiation with given calibration data
+        cls = None
+        try:
+            cls = self.CALIBRATIONS_SUPPORT_MAP[type(calibration_data)]
+        except KeyError:
+            logger.error(f"Given calibration for sensor `{0}` is not"
+                         f"supported."
+                         .format(sensor_info.uid))
+            raise FDSCalibrationSupportError()
+        self.__calibration = cls(calibration_data)
+
         self.__logger = logger
 
     @override
@@ -202,11 +219,6 @@ class RPLidar(Lidar, rplidar.RPLidar):
     @classmethod
     def devicetype(cls) -> int:
         return LidarDeviceType.RPLIDAR
-
-    @override
-    @property
-    def calibration(self) -> RPLidarCalibration:
-        return self.__calibration
 
     @override
     def getRawSamples(self) -> np.ndarray:
@@ -242,14 +254,14 @@ SENSOR_TYPE_CLASS_MAP: dict = {
 
 class FDSSensorTypeException(Exception):
     """
-    Exception class for raising errors related to bad indexing into the dict
-    `_g_sensor_type_class_map`.
+    Exception class for raising errors related to bad indexing into
+    `SENSOR_TYPE_CLASS_MAP`.
     """
     pass
 
 
 def getSensors(sensors_info: List[SensorInfo], logger: logging.Logger
-               ) -> List[Sensor]:
+               ) -> Dict[Sensor]:
     """
     Initialize all sensors used by the FDS.
 
@@ -257,20 +269,25 @@ def getSensors(sensors_info: List[SensorInfo], logger: logging.Logger
         for Initializing Sensors
     :param logging.Logger logger: A logger for logging errors.
     :return: A list of Sensors
-    :rtype: List[Sensor]
+    :rtype: Dict[Sensor]
     """
 
     global SENSOR_TYPE_CLASS_MAP
 
-    sensors_list = []
+    sensors_dict = {}
     for si in sensors_info:
+        if si.uid in sensors_dict:
+            raise
+
+        cls = None
         try:
             # Get the corresponding class from the map to construct
             cls: Sensor = SENSOR_TYPE_CLASS_MAP[si.classtype][si.devicetype]
-            sensor = cls(si.location, si.calibration, logger=logger)
-            sensors_list.append(sensor)
         except KeyError:
             logger.error(f"Sensor info for `{0}` had bad class or device type."
                          .format(si.location))
             raise FDSSensorTypeException
-    return sensors_list
+        calibration_data = getCalibration(si, logger)
+        sensor = cls(si.path, calibration_data, logger=logger)
+        sensors_dict[si.uid] = sensor
+    return sensors_dict

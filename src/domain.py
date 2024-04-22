@@ -1,4 +1,5 @@
-from typing import Optional, Callable, Any, List
+from typing import Optional, Callable, Any, List, Dict
+from enum import IntEnum
 
 import logging
 import threading
@@ -10,6 +11,8 @@ from .sensor import Sensor
 from .algs import GlobalTrainingSets, LidarAlgSet
 from .room import Room
 from .ipc import Socket, FallEventInfo
+from .fds import FDSRoot
+
 # FUTURE: Plot should eventually be removed with routines merged into FDSSocket
 #   or other status communicator to send plots over a socket
 from .plot import LidarPlotter
@@ -21,10 +24,15 @@ class Domain(object):
     dwelling. A fall detection system (FDS) is an instance of the class.
     """
 
+    class Callback(IntEnum):
+        PAUSE = 0,
+        RESUME = 1,
+
     def __init__(self, domain_config: DomainConfig,
+                 fds_owner: FDSRoot,
                  training: GlobalTrainingSets,
-                 sensors: List[Sensor],
-                 socket: Socket,
+                 sensors: Dict[Sensor],
+                 socket_dir: str,
                  logger: logging.Logger):
         """
         :param domain_config: A room specific configuration to use.
@@ -36,36 +44,37 @@ class Domain(object):
         """
 
         self.__config = domain_config
+        self.__fds = fds_owner
         self.__lidar_alg_set = LidarAlgSet(trainingset=training)
+
+        callback_map = {
+            self.Callback.PAUSE: self.pause,
+            self.Callback.RESUME: self.resume
+        }
+        socket = Socket(socket_dir, domain_config.uid, callback_map, logger)
         self.__socket = socket
-        self.__logger = logger
-        self.__rooms = []
+
+        self.__plotter = LidarPlotter()
+
         self.__threads = []
         self.__threads_condexit = threading.Condition()
         self.__threads_toexit = 0
 
-        self.__plotter = LidarPlotter()
-
         self.addThread(self.__plotter.__thread_plotLoop,
                        name="FDS Plot Loop")
-        self.__initalizeRooms(sensors)
-        return
 
-    def __initalizeRooms(self, sensors: List[Sensor]):
-        """
-        Initialize all rooms with given information from the domain
-        configuration.
-        """
-
+        self.__rooms = []
         room_configs = self.__dom_config.room_configs
-        logger = self.__logger
         lidar_alg_set = self.__lidar_alg_set
         for room_config in room_configs:
             priv_sensors = []
             for uid in room_config.sensors_assigned:
                 priv_sensors.append(sensors[uid])
-            self._rooms.append(Room(room_config, self, lidar_alg_set,
-                                    priv_sensors, logger))
+            self.__rooms.append(Room(room_config, self, lidar_alg_set,
+                                     priv_sensors, logger))
+
+        self._running = False
+        self.__logger = logger
         return
 
     def __threadWrapper(self, func: Callable[..., Any]):
@@ -101,8 +110,7 @@ class Domain(object):
 
     def __runThreads(self):
         """
-        Run domain threads in the thread pool.
-        Note: This function does not block.
+        Run domain threads in the thread pool. Non-blocking.
         """
 
         for thread in self.__threads:
@@ -111,30 +119,51 @@ class Domain(object):
 
     def start(self):
         """
-        Start execution for the domain. Waits until the threads or the FDS
-        exits.
+        Start execution for the domain. Non-blocking.
         """
 
+        if self._running:
+            return
+        self.__socket.bindBegin()
         self.__runThreads()
-        self._wait()
         return
 
-    def _wait(self):
+    def stop(self):
+        """
+        Stop execution for the domain.
+        """
+
+        if not self._running:
+            return
+        return
+
+    def return_wait(self):
         """
         Wait for all threads of the domain to return.
         """
 
+        # FUTURE: Use higher level (fds.py) condition to notify when waiting
+        #   for multiple domains to exit
         while self.__threads_toexit != 0:
             self.__threads_condexit.wait(timeout=None)
         return
 
-    def pause(self):
+    def pause(self, data: dict):
         """
         Pause all processing related to the domain.
         """
 
         for room in self.__rooms:
             room.pauseThreads()
+        return
+
+    def resume(self, data: dict):
+        """
+        Resume all processing related to the domain.
+        """
+
+        for room in self.__rooms:
+            room.resumeThreads()
         return
 
     def _emitFallEvent(self, room_id):
