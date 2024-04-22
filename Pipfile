@@ -9,6 +9,7 @@ scikit-learn = "*"
 rplidar-roboticia = "*"
 matplotlib = "*"
 pyzmq = "*"
+scipy = "*"
 
 [dev-packages]
 
