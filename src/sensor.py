@@ -1,4 +1,4 @@
-from typing import override, List, Tuple, Dict
+from typing import override, List, Tuple, Dict, Optional
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum, auto
@@ -192,25 +192,26 @@ class RPLidar(Lidar, rplidar.RPLidar):
     }
 
     def __init__(self, sensor_info: SensorInfo,
-                 calibration_data: CalibrationData,
+                 calibration_data: Optional[CalibrationData],
+                 logger: logging.Logger,
                  baudrate: int = 115200, timeout: int = 1,
-                 min_scan_len: int = 5,
-                 logger: logging.Logger = None):
+                 min_scan_len: int = 5):
         self.__rpsup = super(rplidar.RPLidar, self)  # alias for RPL superclass
         self.__rpsup.__init__(self, sensor_info.path, baudrate, timeout,
                               logger)
         self.__min_scan_len = min_scan_len
 
-        # Get corresponding class for instantiation with given calibration data
-        cls = None
-        try:
-            cls = self.CALIBRATIONS_SUPPORT_MAP[type(calibration_data)]
-        except KeyError:
-            logger.error(f"Given calibration for sensor `{0}` is not"
-                         f"supported."
-                         .format(sensor_info.uid))
-            raise FDSCalibrationSupportError()
-        self.__calibration = cls(calibration_data)
+        if calibration_data is not None:
+            # Get corresponding class for instantiation with given calibration
+            cls = None
+            try:
+                cls = self.CALIBRATIONS_SUPPORT_MAP[type(calibration_data)]
+            except KeyError:
+                logger.error(f"Given calibration for sensor `{0}` is not"
+                             f"supported."
+                             .format(sensor_info.uid))
+                raise FDSCalibrationSupportError()
+            self.__calibration = cls(calibration_data)
 
         self.__logger = logger
 
