@@ -1,4 +1,4 @@
-from typing import override, List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum, auto
