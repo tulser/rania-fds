@@ -1,6 +1,8 @@
 import pickle
+import argparse
 
 from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import StandardScaler
 import numpy as np
 
 from ..src.base_config import basicConfig
@@ -8,19 +10,32 @@ from ..src.sensor import RPLidar, BoundsCalibrationData
 from ..src.util import convertPolarCartesian
 
 
+DEFAULT_SECTORS = 36
 SCANS_MAX = 20
-DEFAULT_INTERVALS = 36
-DEFAULT_INTERVAL_SPAN = 360 / DEFAULT_INTERVALS
-DBS_EPS = 1
-DBS_MIN_SAMP = 5
+DBS_EPS = 0.5
+DBS_MIN_SAMP = 6
 
 
 def main():
-    # FUTURE: Parse sensor/room arguments and configuration, interval size(?)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("sensor", type=int, nargs=1, action="store")
+    parser.add_argument("--sectors", "-s", type=int, nargs="?",
+                        action="store_const", const=DEFAULT_SECTORS)
+    parser.add_argument("--configpath", "-c", type=str, nargs="?",
+                        action="store_const", const=None)
+
+    args = parser.parse_args()
+
+    # TODO: Use arguments
+    sensorid = 0  # Not used currently
+    sectors = args.sectors
+    # configpath = args.config  # Not used currently
+
+    interval_size = 360.0 / sectors
 
     # Initialize sensor
     config = basicConfig()
-    sensor = RPLidar(config.sensors[0], None)  # Using specific sensor 0
+    sensor = RPLidar(config.sensors[sensorid], None)
     sensor.startScanning()
 
     # Get scans of the environment
@@ -34,8 +49,10 @@ def main():
 
     # Use single set to remove noise
     scan_all_cart = convertPolarCartesian(scan_all)
+    ss = StandardScaler()
+    scan_all_cart_norm = ss.fit_predict(scan_all_cart)
     dbs = DBSCAN(eps=DBS_EPS, min_samples=DBS_MIN_SAMP, metric="euclidean")
-    labels = dbs.fit_predict(scan_all_cart)
+    labels = dbs.fit_predict(scan_all_cart_norm)
     scan_all_fil = []
     for sample, label in zip(scan_all, labels):
         if (label != -1):
@@ -47,8 +64,8 @@ def main():
     bounds = []
     bs = 0
     ns = 0
-    for i in range(0, DEFAULT_INTERVALS):
-        interval_end = DEFAULT_INTERVAL_SPAN * (i + 1)
+    for i in range(0, sectors):
+        interval_end = interval_size * (i + 1)
         while scan_final[ns][0] < interval_end:
             ns += 1
         sample_slice = scan_final[bs:ns]
@@ -58,8 +75,10 @@ def main():
     bounds_np = np.array(bounds)
     calib_data = BoundsCalibrationData(arcsec_bounds=bounds_np)
 
-    with open(config.sensors[0].calibration_path, "wb") as file:
+    # Save the calibration
+    with open(config.sensors[sensorid].calibration_path, "wb") as file:
         pickle.dump(calib_data, file)
+
     return
 
 

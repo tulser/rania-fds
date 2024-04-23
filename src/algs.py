@@ -16,15 +16,20 @@ from .util import convertPolarCartesian
 @dataclass
 class GlobalTrainingSets:
     clsf_lidar_knn_nkp: int
-    clsf_lidar_knn_set: Tuple[np.ndarray, np.ndarray]
+    clsf_lidar_knn_set_kpdata: List[np.ndarray]
+    clsf_lidar_knn_set_labels: List[int]
 
 
 class LidarAlgSet(object):
 
+    DEFAULT_DBS_EPS: int = 0.5
+    DEFAULT_DBS_MIN_SAMPLES: int = 6
+    DEFAULT_KNN_NEIGHBORS: int = 6
+
     def __init__(self, trainingset: GlobalTrainingSets,
-                 dbs_eps: float = 0.5,
-                 dbs_min_samples: int = 6,
-                 clsf_knn_neighbors: int = 6):
+                 dbs_eps: float = DEFAULT_DBS_EPS,
+                 dbs_min_samples: int = DEFAULT_DBS_MIN_SAMPLES,
+                 clsf_knn_neighbors: int = DEFAULT_KNN_NEIGHBORS):
 
         self.__dbs = DBSCAN(eps=dbs_eps, min_samples=dbs_min_samples)
         self.__ss = StandardScaler()
@@ -32,9 +37,8 @@ class LidarAlgSet(object):
         self.__knn_clsf = KNeighborsClassifier(n_neighbors=clsf_knn_neighbors,
                                                algorithm='ball_tree',
                                                p=1)
-        clsf_knn_traindata = trainingset.clsf_lidar_knn_set
-        knn_data = clsf_knn_traindata[0]
-        knn_labels = clsf_knn_traindata[1]
+        knn_data = trainingset.clsf_lidar_knn_set_kpdata
+        knn_labels = trainingset.clsf_lidar_knn_set_labels
         self.__knn_clsf.fit(knn_data, knn_labels)
 
         self._clsf_key_points_n = trainingset.clsf_lidar_knn_nkp
@@ -52,23 +56,31 @@ class LidarAlgSet(object):
         Classify activity with the given set of Lidar points.
 
         :param np.ndarray pts: An array of points of shape (n_points, 2)
-            with the latter dimension of form (degree, distance).
+            with the latter dimension of form (degree, distance). Points are
+            assumed to be ordered by increasing angle.
         :param float pts: The angular center of the cluster in degrees within
             the range of [0-360).
         :return: A predicted label for the input cluster.
         :rtype: ActivityClass
         """
 
-        # Note: Recall that the index of `pts` does not correspond to degree;
-        #   however, points from a scan generally have increasing degrees.
-
         # * Populate keypoints
-        # Transform the input cluster such that it is centered at degree 0
+        # Transform the cluster such that it is centered at degree 0 and in
+        # range (-180, 180]
         pts_tf = np.empty_like(pts)
-        pts_tf[:, 0] = pts[:, 0] - pts_ang_ctr
-        pts_tf[:, 1] = pts[:, 1]
+        if pts_ang_ctr > 180:
+            pts_ang_ctr = pts_ang_ctr - 360
+        for i in range(0, len(pts)):
+            cpt = pts[i][0] - pts_ang_ctr
+            if cpt > 180:
+                pts_tf[i][0] = cpt - 360
+            else:
+                pts_tf[i][0] = cpt
+            pts_tf[i][1] = pts[i][1]
+
         # Get the span of the angle of the measurements in the cluster
         pts_deg_span = pts_tf[:, 0].max() - pts_tf[:, 0].min()
+
         # Get section lengths for each keypoint to average from
         pts_sec_len = pts_deg_span / self._clsf_key_points_n
         start_idx = 0
