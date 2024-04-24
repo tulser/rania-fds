@@ -70,7 +70,7 @@ class Socket(object):
                                         name="FDS Socket Command Listener")
 
         self._sockets_bound = False
-        self.__callback_dict = callbacks
+        self.__callbacks_map = callbacks
 
         self.__logger = logger
         return
@@ -101,11 +101,11 @@ class Socket(object):
                 continue
 
             ci_type = ci.getCmdType()
-            if ci_type not in self.__callback_dict:
+            if ci_type not in self.__callbacks_map:
                 self.__logger.warn(f"Command with id `{0}` not recognized."
                                    .format(ci_type))
                 continue
-            res = self.__callback_dict[ci_type](ci.getCmdData())
+            res = self.__callbacks_map[ci_type](ci.getCmdData())
 
             # Send result back to the commanding client
             # With ZMQ, this step is preferred in case there is a need to

@@ -1,7 +1,7 @@
 from typing import List, Iterable
 
 from enum import Enum, auto
-import logging
+from logging import Logger
 import threading
 from collections import deque
 import time
@@ -10,9 +10,11 @@ import numpy as np
 
 from .sensor import Sensor, RPLidar
 from .algs import LidarAlgSet
-from .domain import Domain
-from .dataclasses import RoomConfig
-from .fds import FDSException
+from .dataclasses import RoomConfig, RoomCallbacks
+
+
+class FDSRoomException(Exception):
+    pass
 
 
 class Room(object):
@@ -37,22 +39,19 @@ class Room(object):
     __LOW_CLASSIFY_PERIOD_SEC: float = 0.7
 
     def __init__(self, room_config: RoomConfig,
-                 domain_owner: Domain,
                  lidar_alg_set: LidarAlgSet,
                  sensors: List[Sensor],
-                 logger: logging.Logger):
+                 callbacks: RoomCallbacks,
+                 logger: Logger):
         """
         :param room_config: A room specific configuration to use.
         :type room_config: FDSRoomConfig
-        :param domain_owner: The domain object that owns this room.
-        :type domain_owner: FDSDomain
         :param logger: The logger to use for logging.
         :type logger: logging.Logger
         """
 
         self.__config = room_config
-        self.__domain = domain_owner
-        self.__logger = logger
+        self.__callbacks = callbacks
 
         self.__sensors = sensors
         self.__lidar_sensors = []
@@ -66,9 +65,7 @@ class Room(object):
 
         self.__scans = np.ndarray(self._SCAN_MIN_WINDOW_SIZE)
 
-        # Execution control over the room is managed by the owning domain
-        domain_owner.addThread(target=self.__thread_classification,
-                               name="FDS Classification Thread")
+        self.__logger = logger
         return
 
     def __cond_pauseCheck(self):
@@ -80,7 +77,7 @@ class Room(object):
         """
 
         if self._activity_state is self.ActivityState.NONE:
-            raise FDSException()
+            raise FDSRoomException()
 
         self.__threads_pausing = self.__threads_to_pause
         self.__pause_event.clear()
@@ -102,12 +99,12 @@ class Room(object):
         """
 
         if self._activity_state is self.ActivityState.NONE:
-            raise FDSException()
+            raise FDSRoomException()
 
         if self._activity_state is self.ActivityState.PAUSED:
             self.__pause_event.set()
             return
-        raise FDSException()
+        raise FDSRoomException()
 
     def __checkPause(self) -> True:
         """
@@ -260,7 +257,7 @@ class Room(object):
             lidar_alg_set.clusterLidarScan(unculled)
 
         while (len(lidar_clusters) == 0):
-            self.__domain._pushData(0, culled, noise, lidar_clusters)
+            self.__callbacks.pushdata_cb(0, culled, noise, lidar_clusters)
 
             # Checkpoint for pausing
             if not self.__checkPause():
@@ -313,10 +310,10 @@ class Room(object):
                 activity = \
                     lidar_alg_set.classifyLidarCluster(cluster_pts, center)
                 if (activity == 1):  # fall detected
-                    self.__domain._emitFallEvent(self.__config.id)
+                    self.__callbacks.event_cb(self.__config.uid)
                     break
 
-            self.__domain._pushData(0, culled, noise, lidar_clusters)
+            self.__callbacks.pushdata_cb(0, culled, noise, lidar_clusters)
 
             # Checkpoint for pausing
             self.__checkPause()
@@ -367,7 +364,7 @@ class Room(object):
                 exit_status = self.__classificationProcess()
                 if (exit_status != 0):  # start graceful exit
                     break
-            except FDSException as err:
+            except FDSRoomException as err:
                 raise err
 
         self._sensor_sentinel = False

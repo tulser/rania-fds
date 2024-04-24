@@ -11,7 +11,6 @@ from .sensor import Sensor
 from .algs import GlobalTrainingSets, LidarAlgSet
 from .room import Room
 from .ipc import Socket, FallEventInfo
-from .fds import FDSRoot
 
 # FUTURE: Plot should eventually be removed with routines merged into FDSSocket
 #   or other status communicator to send plots over a socket
@@ -29,9 +28,8 @@ class Domain(object):
         RESUME = 1,
 
     def __init__(self, domain_config: DomainConfig,
-                 fds_owner: FDSRoot,
                  training: GlobalTrainingSets,
-                 sensors: Dict[Sensor],
+                 sensors: Dict[int, Sensor],
                  socket_dir: str,
                  logger: logging.Logger):
         """
@@ -44,12 +42,11 @@ class Domain(object):
         """
 
         self.__config = domain_config
-        self.__fds = fds_owner
-        self.__lidar_alg_set = LidarAlgSet(trainingset=training)
+        self.__lidar_alg_set = LidarAlgSet(training)
 
         callback_map = {
             self.Callback.PAUSE: self.pause,
-            self.Callback.RESUME: self.resume
+            self.Callback.RESUME: self.resume,
         }
         socket = Socket(socket_dir, domain_config.uid, callback_map, logger)
         self.__socket = socket
@@ -70,8 +67,12 @@ class Domain(object):
             priv_sensors = []
             for uid in room_config.sensors_assigned:
                 priv_sensors.append(sensors[uid])
-            self.__rooms.append(Room(room_config, self, lidar_alg_set,
-                                     priv_sensors, logger))
+            room = Room(room_config, lidar_alg_set, priv_sensors,
+                        self._emitFallEvent,
+                        logger)
+            self.addThread(target=room.__thread_classification,
+                           name="FDS Classification Thread")
+            self.__rooms.append(room)
 
         self._running = False
         self.__logger = logger
@@ -166,17 +167,17 @@ class Domain(object):
             room.resumeThreads()
         return
 
-    def _emitFallEvent(self, room_id):
+    def _emitFallEvent(self, room_uid):
         """
         Emit a fall event from this instance.
         """
 
-        fe = FallEventInfo(self.__config.id, room_id)
+        fe = FallEventInfo(self.__config.uid, room_uid)
         self.__socket.emitEvent(fe)
         return
 
     # FUTURE: Remake this to push data over the socket, rather than plot
-    def _pushData(self, room_id: int, geometry: np.ndarray, noise: np.ndarray,
+    def _pushData(self, room_uid: int, geometry: np.ndarray, noise: np.ndarray,
                   clusters: List[np.ndarray]):
         """
         Push clusters of samples to clients

@@ -6,11 +6,11 @@ from logging import Logger, getLogger
 import sys
 
 from .domain import Domain
-import serialization
+from .serialization import loadGlobalConfig, loadTrainingSets
 from .sensor import getSensors
 
 
-class FDSException(Exception):
+class FDSRootException(Exception):
     pass
 
 
@@ -53,8 +53,8 @@ class FDSRoot(object):
         :type logger: Logger
         """
 
-        fds_config = serialization.getGlobalConfig(config_path, logger)
-        training = serialization.getTrainingSets(TEST_TRAINING_PATH_POSIX)
+        fds_config = loadGlobalConfig(config_path, logger)
+        training = loadTrainingSets(TEST_TRAINING_PATH_POSIX)
 
         sensors = getSensors(fds_config.sensors, logger)
 

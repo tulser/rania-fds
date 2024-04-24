@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import rplidar
 
-from .serialization import getCalibration
+from .serialization import loadCalibration
 from .dataclasses import BoundsCalibrationData, CalibrationData, SensorInfo, \
     SensorClassType, LidarDeviceType
 
@@ -248,7 +248,7 @@ def getSensors(sensors_info: List[SensorInfo], logger: logging.Logger
             logger.error(f"Sensor info for `{0}` had bad class or device type."
                          .format(si.location))
             raise FDSSensorTypeException
-        calibration_data = getCalibration(si, logger)
+        calibration_data = loadCalibration(si, logger)
         sensor = cls(si.path, calibration_data, logger=logger)
         sensors_dict[si.uid] = sensor
     return sensors_dict

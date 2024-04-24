@@ -7,7 +7,6 @@ from logging import Logger
 from .dataclasses import RoomConfig, DomainConfig, GlobalConfig, \
     GlobalTrainingSets, CalibrationData, BoundsCalibrationData, SensorInfo, \
     SensorClassType, LidarDeviceType
-
 from .base_config import basicConfig
 
 
@@ -30,8 +29,8 @@ def _getBasicConfig() -> GlobalConfig:
     return basicConfig()
 
 
-def getGlobalConfig(config_path: Optional[str], logger: Logger
-                    ) -> GlobalConfig:
+def loadGlobalConfig(config_path: Optional[str], logger: Logger
+                     ) -> GlobalConfig:
     """
     Get the user-defined configuration for the FDS and apply it over the
     default configuration.
@@ -70,7 +69,7 @@ CALIBRATION_MAP = {
 }
 
 
-def getCalibration(info: SensorInfo, logger: Logger) -> CalibrationData:
+def loadCalibration(info: SensorInfo, logger: Logger) -> CalibrationData:
     """
     Called by sensor on construction
     """
@@ -86,7 +85,7 @@ def getCalibration(info: SensorInfo, logger: Logger) -> CalibrationData:
     return obj
 
 
-def getTrainingSets(set_path: str, logger: Logger) -> GlobalTrainingSets:
+def loadTrainingSets(set_path: str, logger: Logger) -> GlobalTrainingSets:
     """
     Called in main
     """

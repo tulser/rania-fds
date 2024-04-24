@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Callable, Any
 from enum import IntEnum, auto
 from dataclasses import dataclass
 
@@ -33,6 +33,12 @@ class SensorInfo:
     devicetype: int
     calibration_type: int
     calibration_path: str
+
+
+@dataclass
+class RoomCallbacks:
+    event_cb: Callable[[int], Any]
+    pushdata_cb: Callable[[int, np.ndarray, np.ndarray, List[np.ndarray]], Any]
 
 
 @dataclass
