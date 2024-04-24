@@ -6,7 +6,7 @@ import threading
 
 import numpy as np
 
-from .fdscommon import DomainConfig
+from .dataclasses import DomainConfig
 from .sensor import Sensor
 from .algs import GlobalTrainingSets, LidarAlgSet
 from .room import Room

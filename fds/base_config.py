@@ -3,8 +3,8 @@
 # FUTURE: Delete this file in favor of mandating a specific schema in
 #   `.serialization` with non-specific default fields.
 
-from .fdscommon import GlobalConfig, DomainConfig, RoomConfig
-from .sensor import SensorInfo, SensorClassType, LidarDeviceType
+from .dataclasses import GlobalConfig, DomainConfig, RoomConfig, SensorInfo, \
+    SensorClassType, LidarDeviceType
 
 # Specific, persistent ID for RPLidar A1M8 (actually the UART bridge)
 # FUTURE: Use configuration instead of using a hardcoded value

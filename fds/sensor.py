@@ -1,7 +1,5 @@
 from typing import List, Tuple, Dict, Optional
 from abc import abstractmethod
-from dataclasses import dataclass
-from enum import IntEnum, auto
 
 import logging
 
@@ -9,16 +7,8 @@ import numpy as np
 import rplidar
 
 from .serialization import getCalibration
-
-
-@dataclass
-class CalibrationData:
-    pass
-
-
-@dataclass
-class BoundsCalibrationData(CalibrationData):
-    arcsec_bounds: np.ndarray
+from .dataclasses import BoundsCalibrationData, CalibrationData, SensorInfo, \
+    SensorClassType, LidarDeviceType
 
 
 class SensorCalibration(object):
@@ -54,7 +44,6 @@ class BoundsFiltering(RPLidarCalibration):
         self._bounds = data.arcsec_bounds
         return
 
-    @override
     def filterFunc(self, points: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         :param points: An array of polar points of shape (n, 2), where the
@@ -85,29 +74,6 @@ class BoundsFiltering(RPLidarCalibration):
         return (unculled, culled)
 
 
-@dataclass
-class SensorInfo:
-    """
-    Dataclass for sensor information necessary to load calibration data into
-    the program.
-    """
-
-    uid: int  # Unique, numeric identifier for the sensor
-    path: str  # Resource identifier, should be persistent, unique
-    classtype: int
-    devicetype: int
-    calibration_type: int
-    calibration_path: str
-
-
-class SensorClassType(IntEnum):
-    LIDAR = auto()
-
-
-class LidarDeviceType(IntEnum):
-    RPLIDAR = auto()
-
-
 class Sensor(object):
     """
     Abstract class for a generic sensor type.
@@ -131,7 +97,6 @@ class Lidar(Sensor):
     Abstract subclass for a generic LiDAR type.
     """
 
-    @override
     @property
     @classmethod
     def classtype(cls) -> int:
@@ -215,24 +180,20 @@ class RPLidar(Lidar, rplidar.RPLidar):
 
         self.__logger = logger
 
-    @override
     @property
     @classmethod
     def devicetype(cls) -> int:
         return LidarDeviceType.RPLIDAR
 
-    @override
     def getRawSamples(self) -> np.ndarray:
         scan = next(self.__iterator)
         scan_fv = [(deg, dist) for _, deg, dist in scan]
         return np.array(scan_fv)
 
-    @override
     def filterSamples(self, samples: np.ndarray
                       ) -> Tuple[np.ndarray, np.ndarray]:
         return self.__calibration.filterFunc(samples)
 
-    @override
     def startScanning(self):
         if self.__iterator is None:
             self.__iterator = self.__rpsup.iter_scans(
@@ -240,7 +201,6 @@ class RPLidar(Lidar, rplidar.RPLidar):
         self.__rpsup.start_motor()
         self.__rpsup.start()
 
-    @override
     def stopScanning(self):
         self.__rpsup.stop_motor()
         self.__rpsup.stop()
@@ -262,7 +222,7 @@ class FDSSensorTypeException(Exception):
 
 
 def getSensors(sensors_info: List[SensorInfo], logger: logging.Logger
-               ) -> Dict[Sensor]:
+               ) -> Dict[int, Sensor]:
     """
     Initialize all sensors used by the FDS.
 

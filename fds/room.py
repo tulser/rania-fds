@@ -11,7 +11,8 @@ import numpy as np
 from .sensor import Sensor, RPLidar
 from .algs import LidarAlgSet
 from .domain import Domain
-from .fdscommon import RoomConfig, FDSException
+from .dataclasses import RoomConfig
+from .fds import FDSException
 
 
 class Room(object):

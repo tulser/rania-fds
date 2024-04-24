@@ -11,13 +11,7 @@ import numpy as np
 import scipy.ndimage as sp_nd
 
 from .util import convertPolarCartesian
-
-
-@dataclass
-class GlobalTrainingSets:
-    clsf_lidar_knn_nkp: int
-    clsf_lidar_knn_set_kpdata: List[np.ndarray]
-    clsf_lidar_knn_set_labels: List[int]
+from .dataclasses import GlobalTrainingSets
 
 
 class LidarAlgSet(object):

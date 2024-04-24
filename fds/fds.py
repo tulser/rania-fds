@@ -10,6 +10,10 @@ import serialization
 from .sensor import getSensors
 
 
+class FDSException(Exception):
+    pass
+
+
 class LogLevel(IntEnum):
     DEBUG = logging.DEBUG
     INFO = logging.INFO

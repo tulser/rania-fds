@@ -5,9 +5,10 @@ from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
 import numpy as np
 
-from src.base_config import basicConfig
-from src.sensor import RPLidar, BoundsCalibrationData
-from src.util import convertPolarCartesian
+from fds.base_config import basicConfig
+from fds.sensor import RPLidar
+from fds.dataclasses import BoundsCalibrationData
+from fds.util import convertPolarCartesian
 
 
 DEFAULT_SECTORS = 36

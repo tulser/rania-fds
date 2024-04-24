@@ -4,11 +4,9 @@ import tomllib
 import pickle
 from logging import Logger
 
-from .fdscommon import RoomConfig, DomainConfig, GlobalConfig, \
-    GlobalTrainingSet
-from .sensor import CalibrationData, BoundsCalibrationData, SensorInfo
-from .sensor import SensorClassType, LidarDeviceType
-from .algs import GlobalTrainingSets
+from .dataclasses import RoomConfig, DomainConfig, GlobalConfig, \
+    GlobalTrainingSets, CalibrationData, BoundsCalibrationData, SensorInfo, \
+    SensorClassType, LidarDeviceType
 
 from .base_config import basicConfig
 

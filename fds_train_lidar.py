@@ -8,11 +8,12 @@ import os.path as path
 import pickle
 import argparse
 
-from ..src.util import convertPolarCartesian
-from ..src.algs import LidarAlgSet, GlobalTrainingSets
-from ..src.serialization import getCalibration
-from ..src.base_config import basicConfig
-from ..src.sensor import RPLidar
+from fds.util import convertPolarCartesian
+from fds.algs import LidarAlgSet
+from fds.dataclasses import GlobalTrainingSets
+from fds.serialization import getCalibration
+from fds.src.base_config import basicConfig
+from fds.src.sensor import RPLidar
 
 
 class FDSScanException(Exception):
