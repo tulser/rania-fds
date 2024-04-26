@@ -10,6 +10,7 @@ rplidar-roboticia = "*"
 matplotlib = "*"
 pyzmq = "*"
 scipy = "*"
+pyqt5 = "*"
 
 [dev-packages]
 

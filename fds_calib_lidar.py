@@ -17,17 +17,24 @@ from fds.fds import LogHandler, LogLevel
 DEFAULT_SECTORS = 72
 
 SCANS_MAX = 40
-DBS_EPS_MM = 10. + (40. / (SCANS_MAX / 80))
-DBS_MIN_SAMP = math.ceil(16 * SCANS_MAX / 80)
+DBS_EPS_MM = 10. + (30. / (SCANS_MAX / 80))
+DBS_MIN_SAMP = math.ceil(8 * SCANS_MAX / 80)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("sensor", type=int, nargs=1, action="store")
+    parser.add_argument("--nosave", "-d", action="store_true", default=False)
+    parser.add_argument("--scannum", "-n", type=int, nargs="?",
+                        default=SCANS_MAX)
+    parser.add_argument("--eps", "-e", type=float, nargs="?",
+                        default=DBS_EPS_MM)
+    parser.add_argument("--minsamp", "-m", type=int, nargs="?",
+                        default=DBS_MIN_SAMP)
     parser.add_argument("--sectors", "-s", type=int, nargs="?",
-                        const=DEFAULT_SECTORS, default=DEFAULT_SECTORS)
+                        default=DEFAULT_SECTORS)
     parser.add_argument("--configpath", "-c", type=str, nargs="?",
-                        const=None, default=None)
+                        default=None)
 
     args = parser.parse_args()
 
@@ -37,6 +44,10 @@ def main():
 
     # TODO: Use arguments
     sensorid = 0  # Not used currently
+    nosave = args.nosave
+    scannum = args.scannum
+    eps = args.eps
+    minsamp = args.minsamp
     sectors = args.sectors
     # configpath = args.config  # Not used currently
 
@@ -51,10 +62,12 @@ def main():
     # Get scans of the environment
     sensor.startScanning()
     scan_list = []
-    for i in range(0, SCANS_MAX):
+    for i in range(0, scannum):
         scan = sensor.getRawSamples()
         scan_list.append(scan)
     sensor.stopScanning()
+
+    logger.info("Got all scans: {0} scans made.\n".format(scannum))
 
     # Merge scans into one set
     scan_all = np.concatenate(scan_list, axis=0)
@@ -62,10 +75,12 @@ def main():
     # The array is sorted to make bounds calculation easier
     scan_all = scan_all[scan_all[:, 0].argsort()]
 
+    logger.info("Removing noise.\n")
+
     # Use single set to remove noise
     scan_all_cart = convertPolarCartesian(scan_all)
 
-    dbs = DBSCAN(eps=DBS_EPS_MM, min_samples=DBS_MIN_SAMP, metric="euclidean")
+    dbs = DBSCAN(eps=eps, min_samples=minsamp, metric="euclidean")
     labels = dbs.fit_predict(scan_all_cart)
 
     scan_all_fil = []
@@ -74,6 +89,8 @@ def main():
             scan_all_fil.append(sample)
     # Final scan with noise culled
     scan_final = np.array(scan_all_fil)
+
+    logger.info("Generating bounds calibration.\n")
 
     # Calculate bounds
     bounds = []
@@ -97,13 +114,20 @@ def main():
     bounds_np = np.array(bounds)
     calib_data = BoundsCalibrationData(arcsec_bounds=bounds_np)
 
+    logger.info("Bounds calibration generated.\n")
+
     print(bounds_np)
 
     # Save the calibration
-    with open(config.sensors[sensorid].calibration_path, "wb") as file:
-        pickle.dump(calib_data, file)
+    if not nosave:
+        calib_path = config.sensors[sensorid].calibration_path
+        logger.info("Saving calibration to path \"{0}\".\n".format(calib_path))
+        with open(calib_path, "wb") as file:
+            pickle.dump(calib_data, file)
+        logger.info("Saved calibration.\n")
 
     # Plot samples, including noise
+    logger.info("Showing full scan plot.\n")
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
     ax.set_rmax(1000)
     ax.grid(True)
