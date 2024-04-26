@@ -145,8 +145,8 @@ class FDSCalibrationSupportError:
     pass
 
 
-# FUTURE: Consider moving or adding driver/dependency code into this class
-class RPLidar(Lidar, rplidar.RPLidar):
+# FUTURE: Consider bringing [rplidar.RPLidar] driver code into this
+class RPLidar(Lidar):
     """
     Implementation for RPLidar LiDAR devices.
     """
@@ -160,10 +160,9 @@ class RPLidar(Lidar, rplidar.RPLidar):
                  calibration_data: Optional[CalibrationData],
                  logger: logging.Logger,
                  baudrate: int = 115200, timeout: int = 1,
-                 min_scan_len: int = 5):
-        self.__rpsup = super(rplidar.RPLidar, self)  # alias for RPL superclass
-        self.__rpsup.__init__(self, sensor_info.path, baudrate, timeout,
-                              logger)
+                 min_scan_len: int = _MIN_SCAN_LEN_DEFAULT):
+        self.__rpl = rplidar.RPLidar(sensor_info.path, baudrate, timeout,
+                                     logger=None)
         self.__min_scan_len = min_scan_len
 
         if calibration_data is not None:
@@ -177,6 +176,8 @@ class RPLidar(Lidar, rplidar.RPLidar):
                              .format(sensor_info.uid))
                 raise FDSCalibrationSupportError()
             self.__calibration = cls(calibration_data)
+
+        self.__iterator = None
 
         self.__logger = logger
 
@@ -196,14 +197,15 @@ class RPLidar(Lidar, rplidar.RPLidar):
 
     def startScanning(self):
         if self.__iterator is None:
-            self.__iterator = self.__rpsup.iter_scans(
-                min_len=self._min_scan_len)
-        self.__rpsup.start_motor()
-        self.__rpsup.start()
+            self.__iterator = self.__rpl.iter_scans(
+                min_len=self.__min_scan_len)
+        # self.__rpl.start()
+        return
 
     def stopScanning(self):
-        self.__rpsup.stop_motor()
-        self.__rpsup.stop()
+        # self.__rpl.stop_motor()
+        self.__rpl.stop()
+        return
 
 
 SENSOR_TYPE_CLASS_MAP: dict = {

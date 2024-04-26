@@ -17,19 +17,15 @@ CALIBRATION_PATH = "./rplidar-1"
 
 
 def basicConfig() -> GlobalConfig:
-    gc = GlobalConfig(socket_dir="./")
     sensor = SensorInfo(uid=0,
                         path=UDEV_RPLIDAR_SENSOR_PATH,
                         classtype=SensorClassType.LIDAR,
                         devicetype=LidarDeviceType.RPLIDAR,
                         calibration_type=0,
                         calibration_path=CALIBRATION_PATH)
-    gc.sensors = [sensor]
-
-    dc = DomainConfig(uid=0)
 
     rc = RoomConfig(uid=0, sensors_assigned=[0])
+    dc = DomainConfig(uid=0, room_configs=[rc])
 
-    dc.room_configs = [rc]
-    gc.dom_configs = [dc]
+    gc = GlobalConfig(socket_dir="./", sensors=[sensor], dom_configs=[dc])
     return gc

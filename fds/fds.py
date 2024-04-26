@@ -2,7 +2,7 @@ from typing import Optional
 from enum import IntEnum
 
 import logging
-from logging import Logger, getLogger
+from logging import Logger
 import sys
 
 from .domain import Domain
@@ -12,29 +12,6 @@ from .sensor import getSensors
 
 class FDSRootException(Exception):
     pass
-
-
-class LogLevel(IntEnum):
-    DEBUG = logging.DEBUG
-    INFO = logging.INFO
-    WARNING = logging.WARNING
-    ERROR = logging.ERROR
-    CRITICAL = logging.CRITICAL
-
-
-class LogFilter(logging.Filter):
-    """
-    Class for custom filtering behavior on Logger objects.
-    """
-
-    def __init__(self, logpath: Optional[str] = None):
-        self.logpath = logpath
-
-    def filter(record: logging.LogRecord):
-        if record.level <= logging.INFO:
-            sys.stdout.write(record.msg)
-        else:
-            sys.stderr.write(record.msg)
 
 
 class FDSRoot(object):
@@ -90,12 +67,47 @@ class FDSRoot(object):
         return
 
 
+class LogLevel(IntEnum):
+    DEBUG = logging.DEBUG
+    INFO = logging.INFO
+    WARNING = logging.WARNING
+    ERROR = logging.ERROR
+    CRITICAL = logging.CRITICAL
+
+
+class LogHandler(logging.Handler):
+    """
+    Class for custom filtering behavior on Logger objects.
+    """
+
+    def __init__(self, loglevel: LogLevel, logpath: Optional[str] = None):
+        super().__init__()
+        self.__loglevel = loglevel
+        self.__logpath = logpath
+
+    def emit(self, record: logging.LogRecord):
+        if (record.levelno <= logging.INFO):
+            sys.stdout.write(record.msg)
+        else:
+            sys.stderr.write(record.msg)
+        return
+
+
+def getFDSLogger(loglevel: LogLevel) -> Logger:
+    logger = logging.getLogger("fds")
+    logger.setLevel(loglevel)
+    logger.addHandler(LogHandler(loglevel))
+    return logger
+
+
 DEFAULT_CONFIG_PATH_POSIX = "/etc/rania-fds/fds.conf"
 DEFAULT_CONFIG_BASE_PATH_POSIX = "/usr/share/rania-fds/fds.conf"
 DEFAULT_TRAINING_PATH_POSIX = "/usr/share/rania-fds/training"
 
 TEST_CONFIG_PATH_POSIX = "./fds.conf"
 TEST_TRAINING_PATH_POSIX = "./training"
+
+DEFAULT_LOGLEVEL = LogLevel.INFO
 
 
 def main():
@@ -105,14 +117,12 @@ def main():
     start the fall detection system.
     """
 
-    # TODO: Parse passed options
+    # TODO: Use argparse module to parse passed options
 
     config_path = DEFAULT_CONFIG_BASE_PATH_POSIX
-    loglevel = LogLevel.INFO
+    loglevel = DEFAULT_LOGLEVEL
 
-    logger = getLogger("fds")
-    logger.setLevel(loglevel)
-    logger.addFilter(LogFilter())
+    logger = getFDSLogger(loglevel)
 
     fds = FDSRoot(config_path, logger)
     fds.start()
